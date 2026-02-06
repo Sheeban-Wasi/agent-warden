@@ -46,15 +46,15 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Literal, ParamSpec, TypeVar, overload
+from typing import Any, Literal, ParamSpec, TypeVar, overload
 
-from warden.core.audit import AuditLogger, AuditLevel, LogDestination
-from warden.core.inspectors.sql import SQLInspector, SQLMode
-from warden.core.verdict import Verdict, VerdictType
-from warden.exceptions import PolicyViolation, CriticalViolation
-
+from warden.core.audit import AuditLevel, AuditLogger, LogDestination
+from warden.core.inspectors.sql import SQLInspector
+from warden.core.verdict import Verdict
+from warden.exceptions import CriticalViolation, PolicyViolation
 
 P = ParamSpec("P")
 R = TypeVar("R")

@@ -11,19 +11,18 @@ These tests verify that the @guard decorator correctly:
 """
 
 import asyncio
+
 import pytest
 
 from warden import (
-    guard,
-    ToolGuard,
-    GuardConfig,
-    create_sql_guard,
-    PolicyViolation,
-    CriticalViolation,
     AuditLogger,
+    CriticalViolation,
     LogDestination,
+    PolicyViolation,
+    ToolGuard,
+    create_sql_guard,
+    guard,
 )
-
 
 # =============================================================================
 # BASIC @guard DECORATOR TESTS

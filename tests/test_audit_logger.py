@@ -9,24 +9,21 @@ These tests verify that the audit logger correctly:
 """
 
 import json
-import tempfile
 import time
 from io import StringIO
-from pathlib import Path
 
 import pytest
 
 from warden import (
-    AuditLogger,
     AuditLevel,
+    AuditLogger,
     AuditRecord,
     LogDestination,
     create_audit_logger,
     inspect_sql,
 )
-from warden.core.audit import StreamHandler, FileHandler, AsyncHandler
-from warden.core.verdict import Verdict, VerdictType, create_pass_verdict, create_block_verdict
-
+from warden.core.audit import AsyncHandler, FileHandler, StreamHandler
+from warden.core.verdict import create_block_verdict, create_pass_verdict
 
 # =============================================================================
 # AUDIT RECORD TESTS

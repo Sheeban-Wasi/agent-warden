@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from warden import check_sql, inspect_sql, SQLInspector, SQLMode, Verdict, VerdictType
-
+from warden import SQLInspector, SQLMode, VerdictType, check_sql, inspect_sql
 
 # =============================================================================
 # FIXTURES

@@ -30,10 +30,8 @@ Example:
 from __future__ import annotations
 
 import json
-import logging
 import sys
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -152,7 +150,7 @@ class FileHandler:
         """Ensure file is open, creating parent dirs if needed."""
         if self._file is None or self._file.closed:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._file = open(self.path, self.mode, encoding=self.encoding)
+            self._file = open(self.path, self.mode, encoding=self.encoding)  # noqa: SIM115
         return self._file
 
     def write(self, record: dict[str, Any]) -> None:
@@ -225,7 +223,7 @@ class AsyncHandler:
 
     def write(self, record: dict[str, Any]) -> None:
         """Queue a record for async writing."""
-        try:
+        try:  # noqa: SIM105
             self._queue.put_nowait(record)
         except Exception:
             pass  # Drop record if queue is full
@@ -343,7 +341,7 @@ class AuditLogger:
         # Write to all handlers
         record_dict = record.to_dict()
         for handler in self._handlers:
-            try:
+            try:  # noqa: SIM105
                 handler.write(record_dict)
             except Exception:
                 pass  # Don't let logging failures break the app
@@ -379,7 +377,7 @@ class AuditLogger:
         }
 
         for handler in self._handlers:
-            try:
+            try:  # noqa: SIM105
                 handler.write(record)
             except Exception:
                 pass
@@ -395,7 +393,7 @@ class AuditLogger:
     def flush(self) -> None:
         """Flush all handlers."""
         for handler in self._handlers:
-            try:
+            try:  # noqa: SIM105
                 handler.flush()
             except Exception:
                 pass
@@ -403,7 +401,7 @@ class AuditLogger:
     def close(self) -> None:
         """Close all handlers and release resources."""
         for handler in self._handlers:
-            try:
+            try:  # noqa: SIM105
                 handler.close()
             except Exception:
                 pass

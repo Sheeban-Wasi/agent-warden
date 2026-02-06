@@ -33,7 +33,7 @@ from typing import Literal
 import sqlglot
 from sqlglot import exp
 
-from warden.core.verdict import Verdict, VerdictType, create_block_verdict, create_pass_verdict
+from warden.core.verdict import Verdict, create_block_verdict, create_pass_verdict
 
 
 class SQLMode(Enum):
@@ -209,7 +209,7 @@ class SQLInspector:
         if len(query) > self.config.max_query_length:
             return create_block_verdict(
                 inspector=self.INSPECTOR_NAME,
-                reason=f"Query exceeds maximum length ({len(query)} > {self.config.max_query_length})",
+                reason=f"Query exceeds maximum length ({len(query)} > {self.config.max_query_length})",  # noqa: E501
                 rule="query_too_long",
                 details={"length": len(query), "max_length": self.config.max_query_length},
                 latency_ms=self._elapsed_ms(start_time),
@@ -349,33 +349,35 @@ class SQLInspector:
             )
 
         # SAFE_WRITE mode: check allowed tables
-        if self.config.mode == SQLMode.SAFE_WRITE:
-            if self.config.allowed_tables:
-                tables = self._extract_tables(node)
-                disallowed = tables - self.config.allowed_tables
-                if disallowed:
-                    return create_block_verdict(
-                        inspector=self.INSPECTOR_NAME,
-                        reason=f"Write to unauthorized table(s): {disallowed}",
-                        rule="write_to_unauthorized_table",
-                        details={
-                            "disallowed_tables": list(disallowed),
-                            "allowed_tables": list(self.config.allowed_tables),
-                        },
-                        latency_ms=self._elapsed_ms(start_time),
-                    )
-
-        # DELETE is special - often restricted even in write modes
-        if node_type == exp.Delete and self.config.mode != SQLMode.MONITOR:
-            # Check if DELETE has a WHERE clause (bulk delete prevention)
-            if not self._has_where_clause(node):
+        if self.config.mode == SQLMode.SAFE_WRITE and self.config.allowed_tables:
+            tables = self._extract_tables(node)
+            disallowed = tables - self.config.allowed_tables
+            if disallowed:
                 return create_block_verdict(
                     inspector=self.INSPECTOR_NAME,
-                    reason="DELETE without WHERE clause blocked (bulk delete prevention)",
-                    rule="bulk_delete_blocked",
-                    details={"operation": "DELETE"},
+                    reason=f"Write to unauthorized table(s): {disallowed}",
+                    rule="write_to_unauthorized_table",
+                    details={
+                        "disallowed_tables": list(disallowed),
+                        "allowed_tables": list(self.config.allowed_tables),
+                    },
                     latency_ms=self._elapsed_ms(start_time),
                 )
+
+        # DELETE is special - often restricted even in write modes
+        # Check if DELETE has a WHERE clause (bulk delete prevention)
+        if (
+            node_type == exp.Delete
+            and self.config.mode != SQLMode.MONITOR
+            and not self._has_where_clause(node)
+        ):
+            return create_block_verdict(
+                inspector=self.INSPECTOR_NAME,
+                reason="DELETE without WHERE clause blocked (bulk delete prevention)",
+                rule="bulk_delete_blocked",
+                details={"operation": "DELETE"},
+                latency_ms=self._elapsed_ms(start_time),
+            )
 
         return None
 

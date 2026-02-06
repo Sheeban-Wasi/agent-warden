@@ -10,7 +10,7 @@ Available integrations:
 """
 
 # Strands integration (always available - no extra dependencies)
-from warden.integrations.strands import guard, ToolGuard, GuardConfig
+from warden.integrations.strands import GuardConfig, ToolGuard, guard
 
 __all__ = [
     "guard",

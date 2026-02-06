@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from warden import check_sql, inspect_sql
+from warden import check_sql
 
 
 @pytest.fixture
@@ -74,7 +74,8 @@ class TestASTAdvantage:
         # These are just data, not commands
         assert check_sql("SELECT 'DROP TABLE users' AS text") is True
         assert check_sql("SELECT * FROM users WHERE action = 'DROP'") is True
-        assert check_sql("INSERT INTO logs VALUES ('User tried DROP')") is False  # blocked by read-only, not content
+        # blocked by read-only mode, not the content
+        assert check_sql("INSERT INTO logs VALUES ('User tried DROP')") is False
 
 
 # =============================================================================
