@@ -479,7 +479,7 @@ class PIIInspector:
             else:
                 replacement = finding.value
 
-            sanitized = sanitized[: finding.start] + replacement + sanitized[finding.end :]
+            sanitized = sanitized[:finding.start] + replacement + sanitized[finding.end:]
 
         pii_types = {f.pii_type.value for f in findings}
         return PIIResult(
