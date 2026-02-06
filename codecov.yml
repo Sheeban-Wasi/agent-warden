@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 5%
+    patch:
+      default:
+        target: 80%
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
+
+ignore:
+  - "tests/**/*"
+  - "examples/**/*"
+  - "**/__init__.py"
