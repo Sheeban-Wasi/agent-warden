@@ -10,7 +10,14 @@ Tests verify:
 - Integration with @guard decorator
 """
 
-from warden import PIIInspector, PIIMatch, PIIType, check_pii, inspect_pii, redact_pii
+from warden import (
+    check_pii,
+    inspect_pii,
+    PIIInspector,
+    PIIMatch,
+    PIIType,
+    redact_pii,
+)
 
 
 # =============================================================================

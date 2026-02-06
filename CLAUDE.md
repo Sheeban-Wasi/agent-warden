@@ -8,9 +8,8 @@ Project-specific instructions for Claude Code when working on Agent-Warden.
 - Always sort imports: stdlib → third-party → local (with blank lines between groups)
 - Remove unused imports before committing
 - Use `from collections.abc import Callable` not `from typing import Callable`
-- Keep imports alphabetized within each section
-- **Prefer single-line imports** - use `from warden import A, B, C` not multi-line
-- Only use multi-line imports if line exceeds 100 chars
+- **Sort imports CASE-INSENSITIVELY alphabetically** (e.g., `check_pii` before `PIIInspector`)
+- Multi-line imports are fine, just keep them sorted
 
 ### Python Standards
 - Use `ruff` for linting (follows rules in pyproject.toml)
