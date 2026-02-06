@@ -18,6 +18,7 @@ from warden import SQLInspector, SQLMode, VerdictType, check_sql, inspect_sql
 # FIXTURES
 # =============================================================================
 
+
 @pytest.fixture
 def attack_vectors():
     """Load attack vectors from JSON file."""
@@ -35,15 +36,13 @@ def read_only_inspector():
 @pytest.fixture
 def safe_write_inspector():
     """SQLInspector allowing writes to specific tables."""
-    return SQLInspector(
-        mode=SQLMode.SAFE_WRITE,
-        allowed_tables={"users", "orders", "logs"}
-    )
+    return SQLInspector(mode=SQLMode.SAFE_WRITE, allowed_tables={"users", "orders", "logs"})
 
 
 # =============================================================================
 # BASIC FUNCTIONALITY TESTS
 # =============================================================================
+
 
 class TestBasicFunctionality:
     """Test basic SQLInspector functionality."""
@@ -96,48 +95,61 @@ class TestBasicFunctionality:
 # CRITICAL OPERATIONS (Always Blocked)
 # =============================================================================
 
+
 class TestCriticalOperations:
     """Test that critical operations are ALWAYS blocked."""
 
-    @pytest.mark.parametrize("sql", [
-        "DROP TABLE users",
-        "DROP DATABASE production",
-        "DROP INDEX idx_users",
-        "DROP VIEW user_view",
-        "DROP SCHEMA public",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "DROP TABLE users",
+            "DROP DATABASE production",
+            "DROP INDEX idx_users",
+            "DROP VIEW user_view",
+            "DROP SCHEMA public",
+        ],
+    )
     def test_drop_statements_blocked(self, sql):
         """All DROP statements must be blocked."""
         verdict = inspect_sql(sql)
         assert verdict.blocked, f"Should block: {sql}"
         assert "Drop" in verdict.details.get("node_type", "") or "critical" in verdict.rule
 
-    @pytest.mark.parametrize("sql", [
-        "ALTER TABLE users ADD COLUMN admin BOOLEAN",
-        "ALTER TABLE users DROP COLUMN password",
-        "ALTER TABLE users RENAME TO customers",
-        "ALTER TABLE users ALTER COLUMN name TYPE TEXT",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "ALTER TABLE users ADD COLUMN admin BOOLEAN",
+            "ALTER TABLE users DROP COLUMN password",
+            "ALTER TABLE users RENAME TO customers",
+            "ALTER TABLE users ALTER COLUMN name TYPE TEXT",
+        ],
+    )
     def test_alter_statements_blocked(self, sql):
         """All ALTER statements must be blocked."""
         verdict = inspect_sql(sql)
         assert verdict.blocked, f"Should block: {sql}"
 
-    @pytest.mark.parametrize("sql", [
-        "CREATE TABLE hackers (id INT)",
-        "CREATE INDEX idx ON users(password)",
-        "CREATE VIEW admin_view AS SELECT * FROM users",
-        "CREATE DATABASE hacked",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE TABLE hackers (id INT)",
+            "CREATE INDEX idx ON users(password)",
+            "CREATE VIEW admin_view AS SELECT * FROM users",
+            "CREATE DATABASE hacked",
+        ],
+    )
     def test_create_statements_blocked(self, sql):
         """All CREATE statements must be blocked."""
         verdict = inspect_sql(sql)
         assert verdict.blocked, f"Should block: {sql}"
 
-    @pytest.mark.parametrize("sql", [
-        "TRUNCATE TABLE users",
-        "TRUNCATE users",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "TRUNCATE TABLE users",
+            "TRUNCATE users",
+        ],
+    )
     def test_truncate_statements_blocked(self, sql):
         """TRUNCATE must be blocked."""
         verdict = inspect_sql(sql)
@@ -149,6 +161,7 @@ class TestCriticalOperations:
 # =============================================================================
 # WRITE OPERATIONS (Mode Dependent)
 # =============================================================================
+
 
 class TestWriteOperations:
     """Test write operations are blocked in read-only mode."""
@@ -189,26 +202,33 @@ class TestWriteOperations:
 # CASE VARIATIONS
 # =============================================================================
 
+
 class TestCaseVariations:
     """Test that case variations don't bypass protection."""
 
-    @pytest.mark.parametrize("sql", [
-        "drop table users",
-        "DROP TABLE users",
-        "Drop Table Users",
-        "dRoP tAbLe UsErS",
-        "DROP TABLE USERS",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "drop table users",
+            "DROP TABLE users",
+            "Drop Table Users",
+            "dRoP tAbLe UsErS",
+            "DROP TABLE USERS",
+        ],
+    )
     def test_drop_case_insensitive(self, sql):
         """DROP should be blocked regardless of case."""
         assert check_sql(sql) is False
 
-    @pytest.mark.parametrize("sql", [
-        "select * from users",
-        "SELECT * FROM users",
-        "Select * From Users",
-        "sElEcT * fRoM uSeRs",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "select * from users",
+            "SELECT * FROM users",
+            "Select * From Users",
+            "sElEcT * fRoM uSeRs",
+        ],
+    )
     def test_select_case_insensitive(self, sql):
         """SELECT should pass regardless of case."""
         assert check_sql(sql) is True
@@ -218,17 +238,21 @@ class TestCaseVariations:
 # WHITESPACE VARIATIONS
 # =============================================================================
 
+
 class TestWhitespaceVariations:
     """Test that whitespace variations don't bypass protection."""
 
-    @pytest.mark.parametrize("sql", [
-        "DROP TABLE users",
-        "DROP  TABLE  users",
-        "DROP\tTABLE\tusers",
-        "DROP\nTABLE\nusers",
-        "  DROP TABLE users  ",
-        "DROP\r\nTABLE\r\nusers",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "DROP TABLE users",
+            "DROP  TABLE  users",
+            "DROP\tTABLE\tusers",
+            "DROP\nTABLE\nusers",
+            "  DROP TABLE users  ",
+            "DROP\r\nTABLE\r\nusers",
+        ],
+    )
     def test_drop_with_whitespace(self, sql):
         """DROP blocked regardless of whitespace."""
         assert check_sql(sql) is False
@@ -238,17 +262,21 @@ class TestWhitespaceVariations:
 # STACKED QUERIES
 # =============================================================================
 
+
 class TestStackedQueries:
     """Test that stacked queries with dangerous statements are blocked."""
 
-    @pytest.mark.parametrize("sql", [
-        "SELECT * FROM users; DROP TABLE users",
-        "SELECT 1; DROP TABLE users",
-        "SELECT 1;DROP TABLE users",
-        "SELECT * FROM users;\nDROP TABLE users",
-        "SELECT * FROM users; ALTER TABLE users ADD col INT",
-        "SELECT * FROM users; CREATE TABLE hackers (id INT)",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * FROM users; DROP TABLE users",
+            "SELECT 1; DROP TABLE users",
+            "SELECT 1;DROP TABLE users",
+            "SELECT * FROM users;\nDROP TABLE users",
+            "SELECT * FROM users; ALTER TABLE users ADD col INT",
+            "SELECT * FROM users; CREATE TABLE hackers (id INT)",
+        ],
+    )
     def test_stacked_dangerous_queries_blocked(self, sql):
         """Stacked queries with dangerous operations must be blocked."""
         assert check_sql(sql) is False
@@ -257,6 +285,7 @@ class TestStackedQueries:
 # =============================================================================
 # EDGE CASES
 # =============================================================================
+
 
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
@@ -298,21 +327,25 @@ class TestEdgeCases:
 # LEGITIMATE QUERIES
 # =============================================================================
 
+
 class TestLegitimateQueries:
     """Test that legitimate queries pass."""
 
-    @pytest.mark.parametrize("sql", [
-        "SELECT * FROM users",
-        "SELECT id, name, email FROM users WHERE active = true",
-        "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id",
-        "SELECT COUNT(*) FROM users GROUP BY status",
-        "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
-        "SELECT * FROM users WHERE name LIKE '%john%'",
-        "SELECT * FROM users WHERE id IN (1, 2, 3)",
-        "SELECT DISTINCT status FROM users",
-        "SELECT MAX(price), MIN(price), AVG(price) FROM products",
-        "SELECT * FROM users WHERE created_at > '2024-01-01'",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * FROM users",
+            "SELECT id, name, email FROM users WHERE active = true",
+            "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id",
+            "SELECT COUNT(*) FROM users GROUP BY status",
+            "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
+            "SELECT * FROM users WHERE name LIKE '%john%'",
+            "SELECT * FROM users WHERE id IN (1, 2, 3)",
+            "SELECT DISTINCT status FROM users",
+            "SELECT MAX(price), MIN(price), AVG(price) FROM products",
+            "SELECT * FROM users WHERE created_at > '2024-01-01'",
+        ],
+    )
     def test_legitimate_selects_pass(self, sql):
         """Legitimate SELECT queries should pass."""
         assert check_sql(sql) is True, f"Should allow: {sql}"
@@ -336,6 +369,7 @@ class TestLegitimateQueries:
 # =============================================================================
 # PERFORMANCE TESTS
 # =============================================================================
+
 
 class TestPerformance:
     """Test that inspection is fast enough for real-time use."""
@@ -367,6 +401,7 @@ class TestPerformance:
 # =============================================================================
 # VECTOR FILE TESTS
 # =============================================================================
+
 
 class TestVectorFile:
     """Test all vectors from the JSON file."""
@@ -410,6 +445,7 @@ class TestVectorFile:
 # =============================================================================
 # OBFUSCATION TESTS (THE REAL MOAT TEST)
 # =============================================================================
+
 
 class TestObfuscationDetection:
     """
@@ -455,6 +491,7 @@ class TestObfuscationDetection:
 # DIALECT TESTS
 # =============================================================================
 
+
 class TestDialects:
     """Test SQL dialect handling."""
 
@@ -486,23 +523,30 @@ class TestDialects:
 # PRIVILEGE ESCALATION TESTS
 # =============================================================================
 
+
 class TestPrivilegeEscalation:
     """Test that privilege escalation attempts are blocked."""
 
-    @pytest.mark.parametrize("sql", [
-        "GRANT ALL PRIVILEGES ON *.* TO 'hacker'@'%'",
-        "GRANT SELECT ON users TO public",
-        "GRANT INSERT, UPDATE ON orders TO app_user",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "GRANT ALL PRIVILEGES ON *.* TO 'hacker'@'%'",
+            "GRANT SELECT ON users TO public",
+            "GRANT INSERT, UPDATE ON orders TO app_user",
+        ],
+    )
     def test_grant_statements_blocked(self, sql):
         """GRANT statements should be blocked."""
         verdict = inspect_sql(sql)
         assert verdict.blocked, f"Should block: {sql}"
 
-    @pytest.mark.parametrize("sql", [
-        "CREATE ROLE admin",
-        "CREATE USER hacker WITH PASSWORD 'password123'",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE ROLE admin",
+            "CREATE USER hacker WITH PASSWORD 'password123'",
+        ],
+    )
     def test_create_user_role_blocked(self, sql):
         """CREATE USER/ROLE should be blocked."""
         verdict = inspect_sql(sql)
@@ -512,6 +556,7 @@ class TestPrivilegeEscalation:
 # =============================================================================
 # DANGEROUS FUNCTION TESTS
 # =============================================================================
+
 
 class TestDangerousFunctions:
     """Test that dangerous database functions are detected."""
@@ -533,14 +578,14 @@ class TestDangerousFunctions:
 # BLOCKED TABLE TESTS
 # =============================================================================
 
+
 class TestBlockedTables:
     """Test that access to blocked tables is prevented."""
 
     def test_blocked_table_select(self):
         """SELECT from blocked tables should be blocked."""
         inspector = SQLInspector(
-            mode=SQLMode.READ_ONLY,
-            blocked_tables={"audit_logs", "secrets", "credentials"}
+            mode=SQLMode.READ_ONLY, blocked_tables={"audit_logs", "secrets", "credentials"}
         )
 
         verdict = inspector.inspect("SELECT * FROM audit_logs")
@@ -549,10 +594,7 @@ class TestBlockedTables:
 
     def test_blocked_table_in_join(self):
         """Blocked tables in JOINs should be detected."""
-        inspector = SQLInspector(
-            mode=SQLMode.READ_ONLY,
-            blocked_tables={"secrets"}
-        )
+        inspector = SQLInspector(mode=SQLMode.READ_ONLY, blocked_tables={"secrets"})
 
         verdict = inspector.inspect(
             "SELECT u.name, s.api_key FROM users u JOIN secrets s ON u.id = s.user_id"
@@ -561,10 +603,7 @@ class TestBlockedTables:
 
     def test_allowed_table_passes(self):
         """Non-blocked tables should pass."""
-        inspector = SQLInspector(
-            mode=SQLMode.READ_ONLY,
-            blocked_tables={"secrets"}
-        )
+        inspector = SQLInspector(mode=SQLMode.READ_ONLY, blocked_tables={"secrets"})
 
         verdict = inspector.inspect("SELECT * FROM users")
         assert verdict.passed
@@ -573,6 +612,7 @@ class TestBlockedTables:
 # =============================================================================
 # COMPREHENSIVE VECTOR TESTS
 # =============================================================================
+
 
 class TestAllVectorCategories:
     """Run all vectors from the JSON file by category."""

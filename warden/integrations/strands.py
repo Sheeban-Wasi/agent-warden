@@ -191,14 +191,18 @@ class ToolGuard:
         """Wrap a sync or async function with guard protection."""
 
         if asyncio.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
                 return await self._execute_async(func, args, kwargs)
+
             return async_wrapper  # type: ignore
         else:
+
             @functools.wraps(func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
                 return self._execute_sync(func, args, kwargs)
+
             return sync_wrapper  # type: ignore
 
     def _execute_sync(

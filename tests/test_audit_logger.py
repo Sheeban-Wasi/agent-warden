@@ -29,6 +29,7 @@ from warden.core.verdict import create_block_verdict, create_pass_verdict
 # AUDIT RECORD TESTS
 # =============================================================================
 
+
 class TestAuditRecord:
     """Test AuditRecord dataclass."""
 
@@ -74,6 +75,7 @@ class TestAuditRecord:
 # =============================================================================
 # HANDLER TESTS
 # =============================================================================
+
 
 class TestStreamHandler:
     """Test StreamHandler."""
@@ -187,6 +189,7 @@ class TestAsyncHandler:
 # =============================================================================
 # AUDIT LOGGER TESTS
 # =============================================================================
+
 
 class TestAuditLogger:
     """Test AuditLogger."""
@@ -368,6 +371,7 @@ class TestAuditLogger:
 # INTEGRATION TESTS
 # =============================================================================
 
+
 class TestAuditLoggerIntegration:
     """Integration tests with SQL Inspector."""
 
@@ -437,6 +441,7 @@ class TestAuditLoggerIntegration:
 # =============================================================================
 # PERFORMANCE TESTS
 # =============================================================================
+
 
 class TestAuditLoggerPerformance:
     """Performance tests for audit logger."""

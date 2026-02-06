@@ -41,6 +41,7 @@ def run_vector_tests(vectors, category_name):
 # AST PARSING ADVANTAGE TESTS
 # =============================================================================
 
+
 class TestASTAdvantage:
     """
     Tests that demonstrate AST parsing advantage over regex.
@@ -82,6 +83,7 @@ class TestASTAdvantage:
 # VECTOR-BASED CATEGORY TESTS
 # =============================================================================
 
+
 class TestWhitespaceBypass:
     """Test whitespace alternative bypass attempts."""
 
@@ -89,7 +91,7 @@ class TestWhitespaceBypass:
         """Whitespace alternative techniques."""
         run_vector_tests(
             bypass_vectors["categories"]["whitespace_alternatives"]["vectors"],
-            "whitespace_alternatives"
+            "whitespace_alternatives",
         )
 
 
@@ -99,8 +101,7 @@ class TestNoSpaceBypass:
     def test_no_space_vectors(self, bypass_vectors):
         """No-space bypass techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["no_space_bypass"]["vectors"],
-            "no_space_bypass"
+            bypass_vectors["categories"]["no_space_bypass"]["vectors"], "no_space_bypass"
         )
 
 
@@ -110,8 +111,7 @@ class TestCommentObfuscation:
     def test_comment_vectors(self, bypass_vectors):
         """Comment obfuscation techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["comment_obfuscation"]["vectors"],
-            "comment_obfuscation"
+            bypass_vectors["categories"]["comment_obfuscation"]["vectors"], "comment_obfuscation"
         )
 
 
@@ -132,8 +132,7 @@ class TestCaseAndEncoding:
     def test_case_encoding_vectors(self, bypass_vectors):
         """Case and encoding techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["case_and_encoding"]["vectors"],
-            "case_and_encoding"
+            bypass_vectors["categories"]["case_and_encoding"]["vectors"], "case_and_encoding"
         )
 
 
@@ -143,8 +142,7 @@ class TestKeywordDoubling:
     def test_keyword_doubling_vectors(self, bypass_vectors):
         """Keyword doubling techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["keyword_doubling"]["vectors"],
-            "keyword_doubling"
+            bypass_vectors["categories"]["keyword_doubling"]["vectors"], "keyword_doubling"
         )
 
 
@@ -154,8 +152,7 @@ class TestParenthesesNesting:
     def test_parentheses_vectors(self, bypass_vectors):
         """Parentheses nesting techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["parentheses_nesting"]["vectors"],
-            "parentheses_nesting"
+            bypass_vectors["categories"]["parentheses_nesting"]["vectors"], "parentheses_nesting"
         )
 
 
@@ -166,7 +163,7 @@ class TestStackedWithObfuscation:
         """Stacked queries with various bypass techniques."""
         run_vector_tests(
             bypass_vectors["categories"]["stacked_with_obfuscation"]["vectors"],
-            "stacked_with_obfuscation"
+            "stacked_with_obfuscation",
         )
 
 
@@ -176,8 +173,7 @@ class TestUnionAdvanced:
     def test_union_advanced_vectors(self, bypass_vectors):
         """Advanced UNION-based injection patterns."""
         run_vector_tests(
-            bypass_vectors["categories"]["union_based_advanced"]["vectors"],
-            "union_based_advanced"
+            bypass_vectors["categories"]["union_based_advanced"]["vectors"], "union_based_advanced"
         )
 
 
@@ -187,8 +183,7 @@ class TestNoCommaBypass:
     def test_no_comma_vectors(self, bypass_vectors):
         """No-comma bypass techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["no_comma_bypass"]["vectors"],
-            "no_comma_bypass"
+            bypass_vectors["categories"]["no_comma_bypass"]["vectors"], "no_comma_bypass"
         )
 
 
@@ -198,8 +193,7 @@ class TestNoEqualBypass:
     def test_no_equal_vectors(self, bypass_vectors):
         """No-equal-sign bypass techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["no_equal_bypass"]["vectors"],
-            "no_equal_bypass"
+            bypass_vectors["categories"]["no_equal_bypass"]["vectors"], "no_equal_bypass"
         )
 
 
@@ -209,8 +203,7 @@ class TestFunctionSynonyms:
     def test_function_synonym_vectors(self, bypass_vectors):
         """Function synonym techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["function_synonyms"]["vectors"],
-            "function_synonyms"
+            bypass_vectors["categories"]["function_synonyms"]["vectors"], "function_synonyms"
         )
 
 
@@ -219,10 +212,7 @@ class TestBooleanBlind:
 
     def test_boolean_blind_vectors(self, bypass_vectors):
         """Boolean-based blind injection patterns."""
-        run_vector_tests(
-            bypass_vectors["categories"]["boolean_blind"]["vectors"],
-            "boolean_blind"
-        )
+        run_vector_tests(bypass_vectors["categories"]["boolean_blind"]["vectors"], "boolean_blind")
 
 
 class TestTimeBasedBlind:
@@ -231,8 +221,7 @@ class TestTimeBasedBlind:
     def test_time_based_vectors(self, bypass_vectors):
         """Time-based blind injection patterns."""
         run_vector_tests(
-            bypass_vectors["categories"]["time_based_blind"]["vectors"],
-            "time_based_blind"
+            bypass_vectors["categories"]["time_based_blind"]["vectors"], "time_based_blind"
         )
 
 
@@ -243,7 +232,7 @@ class TestAuthenticationBypass:
         """Authentication bypass patterns."""
         run_vector_tests(
             bypass_vectors["categories"]["authentication_bypass"]["vectors"],
-            "authentication_bypass"
+            "authentication_bypass",
         )
 
 
@@ -252,10 +241,7 @@ class TestOutOfBand:
 
     def test_oob_vectors(self, bypass_vectors):
         """Out-of-band exfiltration techniques."""
-        run_vector_tests(
-            bypass_vectors["categories"]["out_of_band"]["vectors"],
-            "out_of_band"
-        )
+        run_vector_tests(bypass_vectors["categories"]["out_of_band"]["vectors"], "out_of_band")
 
 
 class TestSecondOrder:
@@ -263,10 +249,7 @@ class TestSecondOrder:
 
     def test_second_order_vectors(self, bypass_vectors):
         """Second-order injection payloads."""
-        run_vector_tests(
-            bypass_vectors["categories"]["second_order"]["vectors"],
-            "second_order"
-        )
+        run_vector_tests(bypass_vectors["categories"]["second_order"]["vectors"], "second_order")
 
 
 class TestPolyglot:
@@ -274,10 +257,7 @@ class TestPolyglot:
 
     def test_polyglot_vectors(self, bypass_vectors):
         """Polyglot payloads that work in multiple contexts."""
-        run_vector_tests(
-            bypass_vectors["categories"]["polyglot"]["vectors"],
-            "polyglot"
-        )
+        run_vector_tests(bypass_vectors["categories"]["polyglot"]["vectors"], "polyglot")
 
 
 class TestRealWorldPayloads:
@@ -286,8 +266,7 @@ class TestRealWorldPayloads:
     def test_real_world_vectors(self, bypass_vectors):
         """Real-world injection payloads."""
         run_vector_tests(
-            bypass_vectors["categories"]["real_world_payloads"]["vectors"],
-            "real_world_payloads"
+            bypass_vectors["categories"]["real_world_payloads"]["vectors"], "real_world_payloads"
         )
 
 
@@ -297,8 +276,7 @@ class TestSQLServerSpecific:
     def test_sqlserver_vectors(self, bypass_vectors):
         """SQL Server specific techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["sqlserver_specific"]["vectors"],
-            "sqlserver_specific"
+            bypass_vectors["categories"]["sqlserver_specific"]["vectors"], "sqlserver_specific"
         )
 
 
@@ -308,8 +286,7 @@ class TestOracleSpecific:
     def test_oracle_vectors(self, bypass_vectors):
         """Oracle specific techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["oracle_specific"]["vectors"],
-            "oracle_specific"
+            bypass_vectors["categories"]["oracle_specific"]["vectors"], "oracle_specific"
         )
 
 
@@ -319,8 +296,7 @@ class TestPostgresSpecific:
     def test_postgres_vectors(self, bypass_vectors):
         """PostgreSQL specific techniques."""
         run_vector_tests(
-            bypass_vectors["categories"]["postgres_specific"]["vectors"],
-            "postgres_specific"
+            bypass_vectors["categories"]["postgres_specific"]["vectors"], "postgres_specific"
         )
 
 
@@ -330,14 +306,14 @@ class TestDangerousFunctions:
     def test_dangerous_function_vectors(self, bypass_vectors):
         """Dangerous database functions."""
         run_vector_tests(
-            bypass_vectors["categories"]["dangerous_functions"]["vectors"],
-            "dangerous_functions"
+            bypass_vectors["categories"]["dangerous_functions"]["vectors"], "dangerous_functions"
         )
 
 
 # =============================================================================
 # ENCODING AND OBFUSCATION
 # =============================================================================
+
 
 class TestEncodingAttacks:
     """Test encoding-based attacks."""
@@ -363,6 +339,7 @@ class TestEncodingAttacks:
 # =============================================================================
 # BUFFER OVERFLOW / DOS PREVENTION
 # =============================================================================
+
 
 class TestBufferOverflow:
     """Test buffer overflow and DoS prevention."""

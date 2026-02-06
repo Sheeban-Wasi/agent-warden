@@ -28,11 +28,13 @@ from warden import (
 # BASIC @guard DECORATOR TESTS
 # =============================================================================
 
+
 class TestGuardDecorator:
     """Test the @guard decorator basic functionality."""
 
     def test_guard_allows_safe_select(self):
         """Guard allows safe SELECT queries."""
+
         @guard(audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -42,6 +44,7 @@ class TestGuardDecorator:
 
     def test_guard_blocks_drop_table(self):
         """Guard blocks DROP TABLE queries."""
+
         @guard(audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -53,6 +56,7 @@ class TestGuardDecorator:
 
     def test_guard_blocks_delete(self):
         """Guard blocks DELETE in read-only mode."""
+
         @guard(mode="read-only", audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -62,6 +66,7 @@ class TestGuardDecorator:
 
     def test_guard_allows_insert_in_safe_write_mode(self):
         """Guard allows INSERT in safe-write mode with allowed tables."""
+
         @guard(mode="safe-write", allowed_tables={"logs"}, audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -71,6 +76,7 @@ class TestGuardDecorator:
 
     def test_guard_blocks_insert_to_unauthorized_table(self):
         """Guard blocks INSERT to unauthorized table."""
+
         @guard(mode="safe-write", allowed_tables={"logs"}, audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -82,6 +88,7 @@ class TestGuardDecorator:
 
     def test_guard_without_parentheses(self):
         """Guard works without parentheses."""
+
         @guard
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -91,6 +98,7 @@ class TestGuardDecorator:
 
     def test_guard_with_parentheses(self):
         """Guard works with parentheses and no args."""
+
         @guard()
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -103,11 +111,13 @@ class TestGuardDecorator:
 # BLOCK ACTION TESTS
 # =============================================================================
 
+
 class TestBlockActions:
     """Test different on_block actions."""
 
     def test_on_block_raise(self):
         """on_block='raise' raises exception."""
+
         @guard(on_block="raise", audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -117,6 +127,7 @@ class TestBlockActions:
 
     def test_on_block_return_error(self):
         """on_block='return_error' returns error dict."""
+
         @guard(on_block="return_error", audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -129,6 +140,7 @@ class TestBlockActions:
 
     def test_on_block_return_none(self):
         """on_block='return_none' returns None."""
+
         @guard(on_block="return_none", audit=False)
         def execute_query(query: str) -> str:
             return f"executed: {query}"
@@ -141,11 +153,13 @@ class TestBlockActions:
 # PARAMETER DETECTION TESTS
 # =============================================================================
 
+
 class TestParameterDetection:
     """Test automatic parameter detection."""
 
     def test_first_string_param_detected(self):
         """Guard inspects first string parameter by default."""
+
         @guard(audit=False)
         def execute(query: str, limit: int = 10) -> str:
             return f"{query} LIMIT {limit}"
@@ -155,6 +169,7 @@ class TestParameterDetection:
 
     def test_kwargs_string_detected(self):
         """Guard inspects string kwargs."""
+
         @guard(audit=False)
         def execute(query: str) -> str:
             return f"executed: {query}"
@@ -164,6 +179,7 @@ class TestParameterDetection:
 
     def test_explicit_param_name(self):
         """Guard can be configured to inspect specific parameter."""
+
         @guard(param_name="sql", audit=False)
         def execute(name: str, sql: str) -> str:
             return f"{name}: {sql}"
@@ -176,6 +192,7 @@ class TestParameterDetection:
 
     def test_no_string_param_passes(self):
         """Guard passes if no string parameter found."""
+
         @guard(audit=False)
         def compute(a: int, b: int) -> int:
             return a + b
@@ -188,12 +205,14 @@ class TestParameterDetection:
 # ASYNC FUNCTION TESTS
 # =============================================================================
 
+
 class TestAsyncFunctions:
     """Test guard with async functions."""
 
     @pytest.mark.asyncio
     async def test_async_function_allowed(self):
         """Guard works with async functions - allows safe queries."""
+
         @guard(audit=False)
         async def async_query(query: str) -> str:
             await asyncio.sleep(0.01)
@@ -205,6 +224,7 @@ class TestAsyncFunctions:
     @pytest.mark.asyncio
     async def test_async_function_blocked(self):
         """Guard works with async functions - blocks dangerous queries."""
+
         @guard(audit=False)
         async def async_query(query: str) -> str:
             await asyncio.sleep(0.01)
@@ -216,6 +236,7 @@ class TestAsyncFunctions:
     @pytest.mark.asyncio
     async def test_async_return_error(self):
         """Guard async with return_error action."""
+
         @guard(on_block="return_error", audit=False)
         async def async_query(query: str) -> str:
             return f"executed: {query}"
@@ -228,6 +249,7 @@ class TestAsyncFunctions:
 # =============================================================================
 # TOOL GUARD CLASS TESTS
 # =============================================================================
+
 
 class TestToolGuard:
     """Test ToolGuard class for reusable guards."""
@@ -267,6 +289,7 @@ class TestToolGuard:
 # =============================================================================
 # AUDIT LOGGING TESTS
 # =============================================================================
+
 
 class TestAuditLogging:
     """Test audit logging integration."""
@@ -349,11 +372,13 @@ class TestAuditLogging:
 # SQL DIALECT TESTS
 # =============================================================================
 
+
 class TestSQLDialects:
     """Test SQL dialect support in guard."""
 
     def test_mysql_dialect(self):
         """Guard works with MySQL dialect."""
+
         @guard(dialect="mysql", audit=False)
         def execute(query: str) -> str:
             return f"executed: {query}"
@@ -364,6 +389,7 @@ class TestSQLDialects:
 
     def test_postgres_dialect(self):
         """Guard works with PostgreSQL dialect."""
+
         @guard(dialect="postgres", audit=False)
         def execute(query: str) -> str:
             return f"executed: {query}"
@@ -376,11 +402,13 @@ class TestSQLDialects:
 # ERROR MESSAGE TESTS
 # =============================================================================
 
+
 class TestErrorMessages:
     """Test custom error messages."""
 
     def test_custom_error_message(self):
         """Guard uses custom error message template."""
+
         @guard(
             error_message="Security blocked: {reason}",
             audit=False,
@@ -395,6 +423,7 @@ class TestErrorMessages:
 
     def test_error_message_with_placeholders(self):
         """Error message template supports multiple placeholders."""
+
         @guard(
             error_message="Tool {tool} blocked by {inspector}: {reason}",
             on_block="return_error",
@@ -411,11 +440,13 @@ class TestErrorMessages:
 # BLOCKED TABLES TESTS
 # =============================================================================
 
+
 class TestBlockedTables:
     """Test blocked tables configuration."""
 
     def test_blocked_table_rejected(self):
         """Guard blocks access to blocked tables."""
+
         @guard(blocked_tables={"secrets", "credentials"}, audit=False)
         def execute(query: str) -> str:
             return f"executed: {query}"
@@ -425,6 +456,7 @@ class TestBlockedTables:
 
     def test_non_blocked_table_allowed(self):
         """Guard allows access to non-blocked tables."""
+
         @guard(blocked_tables={"secrets"}, audit=False)
         def execute(query: str) -> str:
             return f"executed: {query}"
@@ -437,11 +469,13 @@ class TestBlockedTables:
 # INTEGRATION WITH STRANDS-LIKE PATTERNS
 # =============================================================================
 
+
 class TestStrandsPatterns:
     """Test patterns that match AWS Strands SDK usage."""
 
     def test_tool_decorator_pattern(self):
         """Guard works with @tool-like decorator pattern."""
+
         # Simulate @tool decorator
         def tool(func):
             func._is_tool = True
@@ -459,6 +493,7 @@ class TestStrandsPatterns:
 
     def test_guard_then_tool_pattern(self):
         """Guard then tool decorator pattern."""
+
         def tool(func):
             func._is_tool = True
             return func
@@ -474,6 +509,7 @@ class TestStrandsPatterns:
 
     def test_class_method_guard(self):
         """Guard works with class methods."""
+
         class DatabaseTool:
             @guard(audit=False)
             def execute(self, query: str) -> str:

@@ -56,39 +56,57 @@ class SQLMode(Enum):
 # CRITICAL NODES - Always blocked regardless of mode
 # These represent existential threats to data integrity
 # =============================================================================
-CRITICAL_NODE_TYPES: frozenset[type[exp.Expression]] = frozenset({
-    exp.Drop,           # DROP TABLE, DROP DATABASE, DROP INDEX
-    exp.Alter,          # ALTER TABLE (schema changes)
-    exp.TruncateTable,  # TRUNCATE TABLE (mass delete)
-    exp.Grant,          # GRANT privileges (privilege escalation)
-    exp.Command,        # Raw commands (EXEC, EXECUTE, CALL)
-    exp.LoadData,       # LOAD DATA INFILE (file access)
-    exp.Copy,           # COPY TO/FROM (PostgreSQL file access)
-})
+CRITICAL_NODE_TYPES: frozenset[type[exp.Expression]] = frozenset(
+    {
+        exp.Drop,  # DROP TABLE, DROP DATABASE, DROP INDEX
+        exp.Alter,  # ALTER TABLE (schema changes)
+        exp.TruncateTable,  # TRUNCATE TABLE (mass delete)
+        exp.Grant,  # GRANT privileges (privilege escalation)
+        exp.Command,  # Raw commands (EXEC, EXECUTE, CALL)
+        exp.LoadData,  # LOAD DATA INFILE (file access)
+        exp.Copy,  # COPY TO/FROM (PostgreSQL file access)
+    }
+)
 
 # Schema modification nodes (subset that's always critical)
-SCHEMA_CHANGE_NODES: frozenset[type[exp.Expression]] = frozenset({
-    exp.Create,         # CREATE TABLE, CREATE INDEX, CREATE USER
-    exp.Alter,
-    exp.Drop,
-    exp.TruncateTable,
-})
+SCHEMA_CHANGE_NODES: frozenset[type[exp.Expression]] = frozenset(
+    {
+        exp.Create,  # CREATE TABLE, CREATE INDEX, CREATE USER
+        exp.Alter,
+        exp.Drop,
+        exp.TruncateTable,
+    }
+)
 
 # =============================================================================
 # WRITE NODES - Blocked in read-only mode
 # =============================================================================
-WRITE_NODE_TYPES: frozenset[type[exp.Expression]] = frozenset({
-    exp.Insert,
-    exp.Update,
-    exp.Delete,
-    exp.Merge,
-})
+WRITE_NODE_TYPES: frozenset[type[exp.Expression]] = frozenset(
+    {
+        exp.Insert,
+        exp.Update,
+        exp.Delete,
+        exp.Merge,
+    }
+)
 
 # SQL keywords that should never appear in string concatenations
-SQL_DANGER_KEYWORDS: frozenset[str] = frozenset({
-    "drop", "alter", "truncate", "delete", "grant", "revoke",
-    "exec", "execute", "xp_", "sp_", "create", "shutdown",
-})
+SQL_DANGER_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "drop",
+        "alter",
+        "truncate",
+        "delete",
+        "grant",
+        "revoke",
+        "exec",
+        "execute",
+        "xp_",
+        "sp_",
+        "create",
+        "shutdown",
+    }
+)
 
 
 @dataclass
@@ -229,9 +247,7 @@ class SQLInspector:
 
         return None
 
-    def _handle_parse_error(
-        self, query: str, error: Exception, start_time: float
-    ) -> Verdict:
+    def _handle_parse_error(self, query: str, error: Exception, start_time: float) -> Verdict:
         """Handle SQL parse failures."""
         error_msg = str(error)
 
@@ -255,9 +271,7 @@ class SQLInspector:
                 latency_ms=self._elapsed_ms(start_time),
             )
 
-    def _check_statement(
-        self, statement: exp.Expression, query: str, start_time: float
-    ) -> Verdict:
+    def _check_statement(self, statement: exp.Expression, query: str, start_time: float) -> Verdict:
         """Check a single SQL statement for violations."""
 
         # Walk the AST and check each node
@@ -393,7 +407,7 @@ class SQLInspector:
             func_name = str(node.this).lower() if node.this else ""
             if func_name in {"exec", "execute", "sp_executesql", "eval"}:
                 # Check if arguments contain suspicious string concatenation
-                for arg in node.expressions if hasattr(node, 'expressions') else []:
+                for arg in node.expressions if hasattr(node, "expressions") else []:
                     if isinstance(arg, (exp.Concat, exp.DPipe, exp.ConcatWs)):
                         concat_result = self._analyze_concat(arg)
                         if concat_result:
@@ -464,6 +478,7 @@ class SQLInspector:
 
         # Stacked queries (semicolon followed by dangerous command)
         import re
+
         stacked_pattern = r";\s*(drop|alter|truncate|delete|grant|revoke|exec)"
         if re.search(stacked_pattern, query_lower):
             return "Possible stacked query injection"
