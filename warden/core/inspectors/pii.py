@@ -26,7 +26,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Literal
+from typing import Literal
 
 from warden.core.verdict import Verdict, create_block_verdict, create_pass_verdict
 
@@ -349,7 +349,7 @@ class PIIInspector:
                         )
 
         # Check custom patterns
-        for name, pattern in self.config.custom_patterns.items():
+        for _name, pattern in self.config.custom_patterns.items():
             for match in pattern.finditer(text):
                 findings.append(
                     PIIMatch(

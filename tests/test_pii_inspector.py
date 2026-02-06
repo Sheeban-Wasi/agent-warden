@@ -10,13 +10,9 @@ Tests verify:
 - Integration with @guard decorator
 """
 
-import pytest
-
 from warden import (
     PIIInspector,
     PIIMatch,
-    PIIResult,
-    PIIStrategy,
     PIIType,
     check_pii,
     inspect_pii,

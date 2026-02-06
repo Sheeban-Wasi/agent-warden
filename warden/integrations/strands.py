@@ -52,7 +52,7 @@ from enum import Enum
 from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
-from warden.core.inspectors.pii import PIIInspector, PIIResult, PIIStrategy
+from warden.core.inspectors.pii import PIIInspector
 from warden.core.inspectors.sql import SQLInspector
 from warden.core.policy import Policy, PolicyEngine
 from warden.core.verdict import Verdict
