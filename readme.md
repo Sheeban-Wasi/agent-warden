@@ -3,7 +3,11 @@
 **The security moat for AI agents.** Deterministic, AST-based protection that blocks SQL injection, destructive operations, and policy violations before they reach your database.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+<<<<<<< HEAD
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+=======
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+>>>>>>> 54cd82c91ed92f4347444cb50c719a7f5b52ce18
 [![Tests](https://img.shields.io/badge/tests-180%20passing-brightgreen.svg)]()
 [![AWS Strands Compatible](https://img.shields.io/badge/AWS%20Strands-Native-orange)](https://aws.amazon.com/)
 
@@ -54,7 +58,7 @@ execute_query("DROP TABLE users")     # Raises CriticalViolation
 
 ## Core Features
 
-### 1. SQL Inspector (The Moat)
+### 1. SQL Inspector
 
 ```python
 from warden import check_sql, inspect_sql
@@ -272,4 +276,8 @@ pytest tests/ -v
 
 ## License
 
+<<<<<<< HEAD
 Apache License 2.0
+=======
+MIT License
+>>>>>>> 54cd82c91ed92f4347444cb50c719a7f5b52ce18
