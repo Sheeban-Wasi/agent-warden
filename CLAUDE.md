@@ -5,10 +5,12 @@ Project-specific instructions for Claude Code when working on Agent-Warden.
 ## Code Style Rules
 
 ### Imports
-- Always sort imports: stdlib → third-party → local
+- Always sort imports: stdlib → third-party → local (with blank lines between groups)
 - Remove unused imports before committing
 - Use `from collections.abc import Callable` not `from typing import Callable`
 - Keep imports alphabetized within each section
+- **Prefer single-line imports** - use `from warden import A, B, C` not multi-line
+- Only use multi-line imports if line exceeds 100 chars
 
 ### Python Standards
 - Use `ruff` for linting (follows rules in pyproject.toml)
