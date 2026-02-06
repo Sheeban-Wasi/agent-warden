@@ -53,6 +53,7 @@ from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
 from warden.core.inspectors.sql import SQLInspector
+from warden.core.policy import Policy, PolicyEngine
 from warden.core.verdict import Verdict
 from warden.exceptions import CriticalViolation, PolicyViolation
 
@@ -468,8 +469,248 @@ def guard(
 
 
 # =============================================================================
+# POLICY-BASED GUARD
+# =============================================================================
+
+
+class PolicyGuard:
+    """
+    Guard that uses a PolicyEngine for configuration.
+
+    This allows defining security rules in YAML files instead of code,
+    with support for agent-specific rules.
+
+    Example:
+        from warden import PolicyEngine
+        from warden.integrations.strands import PolicyGuard
+
+        # Load policy from file
+        engine = PolicyEngine.from_file("policy.yaml")
+
+        # Create guard for specific agent
+        guard = PolicyGuard(engine, agent="analytics-bot")
+
+        @guard
+        def query_reports(sql: str) -> list:
+            return db.execute(sql)
+    """
+
+    def __init__(
+        self,
+        policy: PolicyEngine | Policy | str,
+        agent: str | None = None,
+        on_block: Literal["raise", "return_error", "return_none"] = "raise",
+        error_message: str = "Operation blocked by security policy: {reason}",
+        audit: bool = True,
+        audit_logger: AuditLogger | None = None,
+        audit_level: Literal["all", "block", "none"] = "all",
+        audit_context: dict[str, Any] | None = None,
+        param_name: str | None = None,
+    ) -> None:
+        """
+        Initialize PolicyGuard.
+
+        Args:
+            policy: PolicyEngine instance, Policy instance, or path to YAML file
+            agent: Agent name for agent-specific rules
+            on_block: Action when blocked (raise, return_error, return_none)
+            error_message: Custom error message template
+            audit: Enable audit logging
+            audit_logger: Custom audit logger instance
+            audit_level: Minimum level to log
+            audit_context: Static context for audit logs
+            param_name: Specific parameter to inspect
+        """
+        # Handle different policy input types
+        if isinstance(policy, str):
+            self._engine = PolicyEngine.from_file(policy)
+        elif isinstance(policy, Policy):
+            self._engine = PolicyEngine(policy)
+        else:
+            self._engine = policy
+
+        self._agent = agent
+        self._on_block = on_block
+        self._error_message = error_message
+        self._param_name = param_name
+        self._audit_context = audit_context or {}
+
+        # Initialize audit logger
+        self._audit_logger: AuditLogger | None = None
+        if audit and audit_logger is None:
+            level_map = {
+                "all": AuditLevel.ALL,
+                "block": AuditLevel.BLOCK,
+                "none": AuditLevel.NONE,
+            }
+            self._audit_logger = AuditLogger(
+                destinations=[LogDestination.STDOUT],
+                min_level=level_map.get(audit_level, AuditLevel.ALL),
+            )
+        elif audit_logger:
+            self._audit_logger = audit_logger
+
+    def __call__(self, func: Callable[P, R]) -> Callable[P, R]:
+        """Decorate a function with this guard."""
+        return self._wrap_function(func)
+
+    def _wrap_function(self, func: Callable[P, R]) -> Callable[P, R]:
+        """Wrap a sync or async function with guard protection."""
+        if asyncio.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                return await self._execute_async(func, args, kwargs)
+
+            return async_wrapper  # type: ignore
+        else:
+
+            @functools.wraps(func)
+            def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                return self._execute_sync(func, args, kwargs)
+
+            return sync_wrapper  # type: ignore
+
+    def _execute_sync(
+        self,
+        func: Callable[P, R],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> R:
+        """Execute sync function with guard protection."""
+        value = self._extract_value(func, args, kwargs)
+        verdict = self._inspect(value, func.__name__)
+
+        if verdict and verdict.blocked:
+            return self._handle_block(verdict, func.__name__)
+
+        return func(*args, **kwargs)
+
+    async def _execute_async(
+        self,
+        func: Callable[P, R],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> R:
+        """Execute async function with guard protection."""
+        value = self._extract_value(func, args, kwargs)
+        verdict = self._inspect(value, func.__name__)
+
+        if verdict and verdict.blocked:
+            return self._handle_block(verdict, func.__name__)
+
+        return await func(*args, **kwargs)
+
+    def _extract_value(
+        self,
+        func: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> str | None:
+        """Extract the value to inspect from function arguments."""
+        if self._param_name:
+            if self._param_name in kwargs:
+                return kwargs[self._param_name]
+            sig = inspect.signature(func)
+            params = list(sig.parameters.keys())
+            if self._param_name in params:
+                idx = params.index(self._param_name)
+                if idx < len(args):
+                    return args[idx]
+            return None
+
+        # Auto-detect: use first string argument
+        for value in kwargs.values():
+            if isinstance(value, str):
+                return value
+        for arg in args:
+            if isinstance(arg, str):
+                return arg
+        return None
+
+    def _inspect(self, value: str | None, func_name: str) -> Verdict | None:
+        """Run inspections using the policy engine."""
+        if value is None:
+            return None
+
+        verdict = self._engine.inspect(value, agent=self._agent)
+
+        if self._audit_logger:
+            context = {
+                "tool": func_name,
+                "agent": self._agent,
+                "inspector": "sql",
+                **self._audit_context,
+            }
+            self._audit_logger.log(verdict, context=context)
+
+        return verdict
+
+    def _handle_block(self, verdict: Verdict, func_name: str) -> Any:
+        """Handle a blocked operation based on config."""
+        error_msg = self._error_message.format(
+            reason=verdict.reason,
+            rule=verdict.rule,
+            inspector=verdict.inspector,
+            tool=func_name,
+        )
+
+        action = BlockAction(self._on_block)
+
+        if action == BlockAction.RAISE:
+            if verdict.rule in {"critical_node_detected", "schema_change_blocked"}:
+                raise CriticalViolation(error_msg, verdict=verdict)
+            raise PolicyViolation(error_msg, verdict=verdict)
+        elif action == BlockAction.RETURN_ERROR:
+            return {
+                "error": True,
+                "message": error_msg,
+                "blocked": True,
+                "reason": verdict.reason,
+                "rule": verdict.rule,
+            }
+        elif action == BlockAction.RETURN_NONE:
+            return None
+
+        raise PolicyViolation(error_msg, verdict=verdict)
+
+
+# =============================================================================
 # CONVENIENCE FUNCTIONS
 # =============================================================================
+
+
+def create_policy_guard(
+    policy: PolicyEngine | Policy | str,
+    agent: str | None = None,
+    on_block: Literal["raise", "return_error", "return_none"] = "raise",
+    audit_logger: AuditLogger | None = None,
+) -> PolicyGuard:
+    """
+    Create a policy-based guard for protecting tools.
+
+    This is the recommended way to use Warden with multi-agent systems.
+
+    Args:
+        policy: PolicyEngine, Policy, or path to YAML file
+        agent: Agent name for agent-specific rules
+        on_block: Action when blocked
+        audit_logger: Custom audit logger
+
+    Example:
+        # Load policy
+        guard = create_policy_guard("policy.yaml", agent="analytics-bot")
+
+        @guard
+        def query_reports(sql: str) -> list:
+            return db.execute(sql)
+    """
+    return PolicyGuard(
+        policy=policy,
+        agent=agent,
+        on_block=on_block,
+        audit_logger=audit_logger,
+    )
 
 
 def create_sql_guard(

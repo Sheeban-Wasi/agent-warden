@@ -51,10 +51,21 @@ from warden.exceptions import (
     WardenError,
 )
 
+# Policy Engine
+from warden.core.policy import (
+    Policy,
+    PolicyEngine,
+    SQLPolicy,
+    AgentPolicy,
+    RateLimits,
+)
+
 # Strands Integration
 from warden.integrations.strands import (
     GuardConfig,
+    PolicyGuard,
     ToolGuard,
+    create_policy_guard,
     create_sql_guard,
     guard,
 )
@@ -84,9 +95,17 @@ __all__ = [
     "CriticalViolation",
     "ConfigurationError",
     "ParseError",
+    # Policy Engine
+    "Policy",
+    "PolicyEngine",
+    "SQLPolicy",
+    "AgentPolicy",
+    "RateLimits",
     # Strands Integration
     "guard",
     "ToolGuard",
+    "PolicyGuard",
     "GuardConfig",
     "create_sql_guard",
+    "create_policy_guard",
 ]

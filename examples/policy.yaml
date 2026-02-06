@@ -1,0 +1,107 @@
+# Agent-Warden Security Policy
+# This file defines security rules for your AI agents.
+
+version: "1.0"
+name: "production-policy"
+description: "Production security policy for multi-agent system"
+environment: "production"
+
+# =============================================================================
+# DEFAULT SQL RULES
+# These apply to ALL agents unless overridden below
+# =============================================================================
+sql:
+  mode: read-only          # Options: read-only, safe-write, strict, monitor
+
+  # Tables that should NEVER be accessed by any agent
+  blocked_tables:
+    - credentials
+    - api_keys
+    - secrets
+    - password_hashes
+    - encryption_keys
+    - audit_logs_internal
+
+  # Maximum query length (DoS prevention)
+  max_query_length: 50000
+
+  # Deny unparseable queries (recommended for production)
+  fail_closed: true
+
+  # SQL dialect (auto-detected if not specified)
+  # dialect: postgres
+
+# =============================================================================
+# AGENT-SPECIFIC RULES
+# Override default rules for specific agents
+# =============================================================================
+agents:
+  # Analytics agent - read-only access to reporting tables
+  analytics-bot:
+    description: "Analytics and reporting agent"
+    enabled: true
+    sql:
+      mode: read-only
+      allowed_tables:
+        - reports
+        - metrics
+        - aggregated_stats
+        - dashboard_data
+      blocked_tables:
+        - users
+        - orders
+        - payments
+
+  # Customer service agent - read customer data, write to tickets
+  support-bot:
+    description: "Customer support agent"
+    enabled: true
+    sql:
+      mode: safe-write
+      allowed_tables:
+        - tickets
+        - ticket_comments
+        - customer_feedback
+      blocked_tables:
+        - users
+        - payments
+        - credentials
+
+  # Admin agent - more permissions but still protected
+  admin-bot:
+    description: "Administrative agent"
+    enabled: true
+    sql:
+      mode: safe-write
+      allowed_tables:
+        - audit_logs
+        - user_preferences
+        - system_settings
+        - feature_flags
+      blocked_tables:
+        - credentials
+        - api_keys
+
+  # Data export agent - read-only, specific tables only
+  export-bot:
+    description: "Data export agent"
+    enabled: true
+    sql:
+      mode: read-only
+      allowed_tables:
+        - export_queue
+        - export_history
+
+  # Disabled agent example
+  legacy-bot:
+    description: "Deprecated agent - disabled"
+    enabled: false
+
+# =============================================================================
+# RATE LIMITS
+# Prevent runaway agents from overwhelming the database
+# =============================================================================
+limits:
+  max_queries_per_minute: 100
+  max_queries_per_hour: 5000
+  max_blocked_per_minute: 10  # Alert if too many blocks (possible attack)
