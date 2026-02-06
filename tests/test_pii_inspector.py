@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """
 Tests for the PII Inspector.
 
@@ -11,11 +12,11 @@ Tests verify:
 """
 
 from warden import (
-    check_pii,
-    inspect_pii,
     PIIInspector,
     PIIMatch,
     PIIType,
+    check_pii,
+    inspect_pii,
     redact_pii,
 )
 
