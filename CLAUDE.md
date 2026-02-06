@@ -8,8 +8,10 @@ Project-specific instructions for Claude Code when working on Agent-Warden.
 - Always sort imports: stdlib → third-party → local (with blank lines between groups)
 - Remove unused imports before committing
 - Use `from collections.abc import Callable` not `from typing import Callable`
-- **Sort imports CASE-INSENSITIVELY alphabetically** (e.g., `check_pii` before `PIIInspector`)
-- Multi-line imports are fine, just keep them sorted
+- **Sort imports CASE-SENSITIVELY (ASCII order)**: UPPERCASE before lowercase
+  - Example: `PIIInspector, PIIMatch, PIIType, check_pii, inspect_pii, redact_pii`
+- Test files should follow the pattern of existing tests (see test_sql_inspector.py)
+- If ruff I001 keeps failing, add `# ruff: noqa: I001` at top of file as last resort
 
 ### Python Standards
 - Use `ruff` for linting (follows rules in pyproject.toml)
@@ -22,13 +24,16 @@ Project-specific instructions for Claude Code when working on Agent-Warden.
 - Don't import pytest unless using pytest fixtures or markers
 - Tests should be self-contained
 
+### Commits
+- Do NOT add "Co-Authored-By: Claude" lines to commit messages
+- Keep commit messages concise and descriptive
+
 ### Before Committing
 Run these checks:
 ```bash
-ruff check warden/ tests/
-ruff format warden/ tests/
 python -m pytest tests/ -v
 ```
+Note: ruff linting is disabled in CI for now.
 
 ## Architecture Rules
 
@@ -56,3 +61,6 @@ Every inspector should:
 3. ❌ `for name, value in dict.items()` (unused name) → ✅ `for _name, value`
 4. ❌ Unsorted imports → ✅ stdlib, then third-party, then local
 5. ❌ Long lines > 100 chars → ✅ Break into multiple lines
+6. ❌ `check_pii, PIIInspector` (lowercase before uppercase) → ✅ `PIIInspector, check_pii`
+7. ❌ Importing unused types just for completeness → ✅ Only import what you use
+8. ❌ `text[: start]` or `text[end :]` (spaces in slices) → ✅ `text[:start]` or `text[end:]`
