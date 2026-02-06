@@ -1,0 +1,185 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "SQL injection attack vectors for testing Agent-Warden",
+    "sources": [
+      "OWASP SQL Injection",
+      "PortSwigger Web Security Academy",
+      "Real-world CVEs"
+    ]
+  },
+  "categories": {
+    "basic_destructive": {
+      "description": "Standard destructive SQL commands",
+      "vectors": [
+        {"sql": "DROP TABLE users", "should_block": true, "reason": "Basic DROP"},
+        {"sql": "DROP DATABASE production", "should_block": true, "reason": "DROP DATABASE"},
+        {"sql": "DROP INDEX idx_users", "should_block": true, "reason": "DROP INDEX"},
+        {"sql": "TRUNCATE TABLE users", "should_block": true, "reason": "TRUNCATE"},
+        {"sql": "TRUNCATE users", "should_block": true, "reason": "TRUNCATE without TABLE keyword"},
+        {"sql": "ALTER TABLE users ADD COLUMN admin BOOLEAN", "should_block": true, "reason": "ALTER TABLE ADD"},
+        {"sql": "ALTER TABLE users DROP COLUMN password", "should_block": true, "reason": "ALTER TABLE DROP"},
+        {"sql": "CREATE TABLE hackers (id INT)", "should_block": true, "reason": "CREATE TABLE"},
+        {"sql": "CREATE USER hacker WITH PASSWORD 'pwned'", "should_block": true, "reason": "CREATE USER"},
+        {"sql": "CREATE INDEX idx ON users(password)", "should_block": true, "reason": "CREATE INDEX"}
+      ]
+    },
+    "case_variations": {
+      "description": "Mixed case attempts to bypass naive filters",
+      "vectors": [
+        {"sql": "DrOp TaBlE users", "should_block": true, "reason": "Mixed case DROP"},
+        {"sql": "DROP table USERS", "should_block": true, "reason": "Partial mixed case"},
+        {"sql": "drop table users", "should_block": true, "reason": "All lowercase"},
+        {"sql": "DROP TABLE USERS", "should_block": true, "reason": "All uppercase"},
+        {"sql": "dRoP tAbLe UsErS", "should_block": true, "reason": "Alternating case"},
+        {"sql": "AlTeR tAbLe users ADD col INT", "should_block": true, "reason": "Mixed case ALTER"},
+        {"sql": "truncate TABLE users", "should_block": true, "reason": "Mixed case TRUNCATE"}
+      ]
+    },
+    "whitespace_variations": {
+      "description": "Extra whitespace and newlines",
+      "vectors": [
+        {"sql": "DROP    TABLE    users", "should_block": true, "reason": "Extra spaces"},
+        {"sql": "DROP\tTABLE\tusers", "should_block": true, "reason": "Tabs"},
+        {"sql": "DROP\nTABLE\nusers", "should_block": true, "reason": "Newlines"},
+        {"sql": "DROP\r\nTABLE\r\nusers", "should_block": true, "reason": "CRLF"},
+        {"sql": "  DROP TABLE users  ", "should_block": true, "reason": "Leading/trailing spaces"},
+        {"sql": "DROP/**/TABLE/**/users", "should_block": true, "reason": "Comment as whitespace"}
+      ]
+    },
+    "comment_injection": {
+      "description": "SQL comment-based attacks",
+      "vectors": [
+        {"sql": "SELECT * FROM users--DROP TABLE users", "should_block": false, "reason": "Comment hides DROP (not executed)"},
+        {"sql": "SELECT * FROM users /* DROP TABLE users */", "should_block": false, "reason": "Block comment hides DROP"},
+        {"sql": "DROP/*comment*/TABLE users", "should_block": true, "reason": "Comment within DROP statement"},
+        {"sql": "SELECT * FROM users; --\nDROP TABLE users", "should_block": true, "reason": "Stacked with comment"}
+      ]
+    },
+    "stacked_queries": {
+      "description": "Multiple statements (semicolon injection)",
+      "vectors": [
+        {"sql": "SELECT * FROM users; DROP TABLE users", "should_block": true, "reason": "Stacked DROP"},
+        {"sql": "SELECT 1; DELETE FROM users", "should_block": true, "reason": "Stacked DELETE"},
+        {"sql": "SELECT 1; ALTER TABLE users ADD col INT", "should_block": true, "reason": "Stacked ALTER"},
+        {"sql": "SELECT 1;DROP TABLE users", "should_block": true, "reason": "No space after semicolon"},
+        {"sql": "SELECT 1;\n\nDROP TABLE users", "should_block": true, "reason": "Newlines between statements"}
+      ]
+    },
+    "union_injection": {
+      "description": "UNION-based SQL injection patterns",
+      "vectors": [
+        {"sql": "SELECT * FROM users UNION SELECT NULL,NULL,NULL", "should_block": true, "reason": "UNION with NULLs (injection signature)"},
+        {"sql": "SELECT * FROM users UNION SELECT 1,2,3,4,5", "should_block": true, "reason": "UNION with literals"},
+        {"sql": "SELECT id FROM users UNION SELECT password FROM admins", "should_block": false, "reason": "Legitimate UNION (no injection signature)"}
+      ]
+    },
+    "write_operations": {
+      "description": "Write operations (blocked in read-only mode)",
+      "vectors": [
+        {"sql": "INSERT INTO users (name) VALUES ('hacker')", "should_block": true, "reason": "INSERT", "mode": "read-only"},
+        {"sql": "UPDATE users SET admin=true WHERE id=1", "should_block": true, "reason": "UPDATE", "mode": "read-only"},
+        {"sql": "DELETE FROM users WHERE id=1", "should_block": true, "reason": "DELETE", "mode": "read-only"},
+        {"sql": "DELETE FROM users", "should_block": true, "reason": "DELETE without WHERE (bulk)", "mode": "safe-write"},
+        {"sql": "MERGE INTO users USING source ON users.id=source.id", "should_block": true, "reason": "MERGE", "mode": "read-only"}
+      ]
+    },
+    "safe_queries": {
+      "description": "Legitimate queries that should PASS",
+      "vectors": [
+        {"sql": "SELECT * FROM users", "should_block": false, "reason": "Basic SELECT"},
+        {"sql": "SELECT id, name, email FROM users WHERE active = true", "should_block": false, "reason": "SELECT with WHERE"},
+        {"sql": "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id", "should_block": false, "reason": "JOIN"},
+        {"sql": "SELECT COUNT(*) FROM users GROUP BY status", "should_block": false, "reason": "Aggregation"},
+        {"sql": "SELECT * FROM users ORDER BY created_at DESC LIMIT 10", "should_block": false, "reason": "ORDER BY and LIMIT"},
+        {"sql": "SELECT * FROM users WHERE name LIKE '%john%'", "should_block": false, "reason": "LIKE pattern"},
+        {"sql": "SELECT * FROM users WHERE id IN (1, 2, 3)", "should_block": false, "reason": "IN clause"},
+        {"sql": "SELECT * FROM users WHERE created_at BETWEEN '2024-01-01' AND '2024-12-31'", "should_block": false, "reason": "BETWEEN"},
+        {"sql": "WITH active_users AS (SELECT * FROM users WHERE active=true) SELECT * FROM active_users", "should_block": false, "reason": "CTE"},
+        {"sql": "SELECT DISTINCT status FROM users", "should_block": false, "reason": "DISTINCT"}
+      ]
+    },
+    "edge_cases": {
+      "description": "Edge cases and boundary conditions",
+      "vectors": [
+        {"sql": "", "should_block": true, "reason": "Empty query"},
+        {"sql": "   ", "should_block": true, "reason": "Whitespace only"},
+        {"sql": "SELECT * FROM", "should_block": true, "reason": "Incomplete FROM"},
+        {"sql": "NOT VALID SQL AT ALL!!!", "should_block": true, "reason": "Invalid SQL (deny by default)"},
+        {"sql": "SELECT 'DROP TABLE users' AS text", "should_block": false, "reason": "DROP in string literal"},
+        {"sql": "SELECT * FROM drop_logs", "should_block": false, "reason": "Table named 'drop_logs'"},
+        {"sql": "SELECT * FROM users WHERE action = 'DROP'", "should_block": false, "reason": "DROP as string value"}
+      ]
+    },
+    "obfuscation_attempts": {
+      "description": "Attempts to hide malicious intent",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE 1=1 OR 1=1", "should_block": false, "reason": "Tautology (suspicious but allowed)"},
+        {"sql": "SELECT * FROM users WHERE ''=''", "should_block": false, "reason": "Empty string tautology"},
+        {"sql": "SELECT * FROM users WHERE 1=0 UNION SELECT * FROM admins", "should_block": false, "reason": "Union with real table (allowed)"}
+      ]
+    },
+    "dialect_specific": {
+      "description": "Database-specific syntax",
+      "vectors": [
+        {"sql": "SELECT TOP 10 * FROM users", "should_block": false, "reason": "SQL Server TOP"},
+        {"sql": "SELECT * FROM users LIMIT 10 OFFSET 5", "should_block": false, "reason": "PostgreSQL/MySQL LIMIT OFFSET"},
+        {"sql": "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", "should_block": false, "reason": "Oracle FETCH"},
+        {"sql": "SELECT GETDATE()", "should_block": false, "reason": "SQL Server function"},
+        {"sql": "SELECT NOW()", "should_block": false, "reason": "MySQL/PostgreSQL function"}
+      ]
+    },
+    "privilege_escalation": {
+      "description": "Attempts to escalate database privileges",
+      "vectors": [
+        {"sql": "GRANT ALL PRIVILEGES ON *.* TO 'hacker'@'%'", "should_block": true, "reason": "GRANT ALL"},
+        {"sql": "GRANT SELECT ON users TO public", "should_block": true, "reason": "GRANT SELECT"},
+        {"sql": "REVOKE ALL ON users FROM readonly_user", "should_block": true, "reason": "REVOKE"},
+        {"sql": "CREATE ROLE admin", "should_block": true, "reason": "CREATE ROLE"},
+        {"sql": "ALTER USER admin WITH SUPERUSER", "should_block": true, "reason": "ALTER USER privileges"}
+      ]
+    },
+    "dangerous_functions": {
+      "description": "Dangerous database functions",
+      "vectors": [
+        {"sql": "SELECT LOAD_FILE('/etc/passwd')", "should_block": true, "reason": "File read attempt"},
+        {"sql": "SELECT * FROM users INTO OUTFILE '/tmp/data.csv'", "should_block": true, "reason": "File write attempt"},
+        {"sql": "SELECT * FROM users INTO DUMPFILE '/tmp/data.bin'", "should_block": true, "reason": "Binary file write"},
+        {"sql": "EXEC xp_cmdshell 'whoami'", "should_block": true, "reason": "OS command execution"},
+        {"sql": "EXEC sp_executesql N'DROP TABLE users'", "should_block": true, "reason": "Dynamic SQL execution"}
+      ]
+    },
+    "information_disclosure": {
+      "description": "Attempts to extract database metadata",
+      "vectors": [
+        {"sql": "SELECT * FROM information_schema.tables", "should_block": false, "reason": "Schema query (allowed but logged)", "note": "Consider blocking in strict mode"},
+        {"sql": "SELECT * FROM information_schema.columns WHERE table_name='users'", "should_block": false, "reason": "Column enumeration"},
+        {"sql": "SELECT table_name FROM all_tables", "should_block": false, "reason": "Oracle metadata"},
+        {"sql": "SELECT @@version", "should_block": false, "reason": "Version disclosure"},
+        {"sql": "SELECT version()", "should_block": false, "reason": "PostgreSQL version"}
+      ]
+    },
+    "timing_attacks": {
+      "description": "Time-based blind SQL injection",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id=1 AND SLEEP(5)", "should_block": false, "reason": "MySQL SLEEP (suspicious but SELECT)", "note": "Consider adding timing function detection"},
+        {"sql": "SELECT * FROM users WHERE id=1; WAITFOR DELAY '0:0:5'", "should_block": true, "reason": "SQL Server delay (stacked)"},
+        {"sql": "SELECT BENCHMARK(10000000, SHA1('test'))", "should_block": false, "reason": "MySQL benchmark", "note": "Consider blocking"}
+      ]
+    },
+    "second_order": {
+      "description": "Payloads that might be stored and executed later",
+      "vectors": [
+        {"sql": "INSERT INTO comments (text) VALUES ('test'); DROP TABLE users; --')", "should_block": true, "reason": "Stored injection attempt"},
+        {"sql": "UPDATE users SET name='admin''--' WHERE id=1", "should_block": true, "reason": "Quote escape attempt", "mode": "read-only"}
+      ]
+    },
+    "encoding_attacks": {
+      "description": "Encoding and charset manipulation",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE name = CHAR(68,82,79,80)", "should_block": false, "reason": "CHAR encoding (returns string)", "note": "Not dangerous in SELECT context"},
+        {"sql": "SELECT CONCAT(CHAR(68),CHAR(82),CHAR(79),CHAR(80))", "should_block": false, "reason": "CONCAT with CHAR", "note": "Only data, not executed"}
+      ]
+    }
+  }
+}

