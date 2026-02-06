@@ -30,6 +30,16 @@ from warden.core.audit import (
     LogDestination,
     create_audit_logger,
 )
+from warden.core.inspectors.pii import (
+    PIIInspector,
+    PIIMatch,
+    PIIResult,
+    PIIStrategy,
+    PIIType,
+    check_pii,
+    inspect_pii,
+    redact_pii,
+)
 from warden.core.inspectors.sql import (
     SQLInspector,
     SQLMode,
@@ -78,6 +88,15 @@ __all__ = [
     "SQLMode",
     "check_sql",
     "inspect_sql",
+    # PII Inspector
+    "PIIInspector",
+    "PIIType",
+    "PIIStrategy",
+    "PIIMatch",
+    "PIIResult",
+    "check_pii",
+    "inspect_pii",
+    "redact_pii",
     # Audit Logger
     "AuditLogger",
     "AuditLevel",

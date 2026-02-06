@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
+from warden.core.inspectors.pii import PIIInspector, PIIResult, PIIStrategy
 from warden.core.inspectors.sql import SQLInspector
 from warden.core.policy import Policy, PolicyEngine
 from warden.core.verdict import Verdict
@@ -81,6 +82,11 @@ class GuardConfig:
         sql_allowed_tables: Tables allowed for writes in safe-write mode
         sql_blocked_tables: Tables that are never allowed
 
+        pii: Enable PII detection
+        pii_strategy: How to handle PII (block, redact, mask, hash, monitor)
+        pii_detect: List of PII types to detect
+        pii_apply_to: Where to apply PII detection (input, output, both)
+
         on_block: Action when blocked (raise, return_error, return_none)
         error_message: Custom error message template
 
@@ -98,6 +104,12 @@ class GuardConfig:
     sql_dialect: str | None = None
     sql_allowed_tables: set[str] | None = None
     sql_blocked_tables: set[str] | None = None
+
+    # PII inspection settings
+    pii: bool = False
+    pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block"
+    pii_detect: list[str] | None = None
+    pii_apply_to: Literal["input", "output", "both"] = "input"
 
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
@@ -131,6 +143,16 @@ class ToolGuard:
 
         @sql_guard
         def query_orders(sql: str): ...
+
+        # PII protection
+        pii_guard = ToolGuard(
+            sql=False,
+            pii=True,
+            pii_strategy="redact",
+        )
+
+        @pii_guard
+        def process_text(text: str): ...
     """
 
     def __init__(
@@ -140,6 +162,10 @@ class ToolGuard:
         dialect: str | None = None,
         allowed_tables: set[str] | None = None,
         blocked_tables: set[str] | None = None,
+        pii: bool = False,
+        pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
+        pii_detect: list[str] | None = None,
+        pii_apply_to: Literal["input", "output", "both"] = "input",
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -154,6 +180,10 @@ class ToolGuard:
             sql_dialect=dialect,
             sql_allowed_tables=allowed_tables,
             sql_blocked_tables=blocked_tables,
+            pii=pii,
+            pii_strategy=pii_strategy,
+            pii_detect=pii_detect,
+            pii_apply_to=pii_apply_to,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -173,10 +203,22 @@ class ToolGuard:
                 blocked_tables=blocked_tables,
             )
 
+        # Initialize PII inspector if needed
+        self._pii_inspector: PIIInspector | None = None
+        if pii:
+            self._pii_inspector = PIIInspector(
+                strategy=pii_strategy,
+                detect_types=pii_detect,
+            )
+
         # Initialize audit logger if needed
         self._audit_logger: AuditLogger | None = None
         if audit and audit_logger is None:
-            level_map = {"all": AuditLevel.ALL, "block": AuditLevel.BLOCK, "none": AuditLevel.NONE}
+            level_map = {
+                "all": AuditLevel.ALL,
+                "block": AuditLevel.BLOCK,
+                "none": AuditLevel.NONE,
+            }
             self._audit_logger = AuditLogger(
                 destinations=[LogDestination.STDOUT],
                 min_level=level_map.get(audit_level, AuditLevel.ALL),
@@ -216,15 +258,25 @@ class ToolGuard:
         # Extract the value to inspect
         value = self._extract_value(func, args, kwargs)
 
-        # Run inspections
-        verdict = self._inspect(value, func.__name__)
+        # Run input inspections
+        verdict, sanitized_input = self._inspect_input(value, func.__name__)
 
-        # Handle result
+        # Handle blocked result
         if verdict and verdict.blocked:
             return self._handle_block(verdict, func.__name__)
 
+        # If PII was sanitized on input, update the argument
+        if sanitized_input is not None and sanitized_input != value:
+            args, kwargs = self._replace_value(func, args, kwargs, sanitized_input)
+
         # Execute the original function
-        return func(*args, **kwargs)
+        result = func(*args, **kwargs)
+
+        # Run output inspections if needed
+        if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
+            result = self._inspect_output(result, func.__name__)
+
+        return result
 
     async def _execute_async(
         self,
@@ -236,15 +288,25 @@ class ToolGuard:
         # Extract the value to inspect
         value = self._extract_value(func, args, kwargs)
 
-        # Run inspections
-        verdict = self._inspect(value, func.__name__)
+        # Run input inspections
+        verdict, sanitized_input = self._inspect_input(value, func.__name__)
 
-        # Handle result
+        # Handle blocked result
         if verdict and verdict.blocked:
             return self._handle_block(verdict, func.__name__)
 
+        # If PII was sanitized on input, update the argument
+        if sanitized_input is not None and sanitized_input != value:
+            args, kwargs = self._replace_value(func, args, kwargs, sanitized_input)
+
         # Execute the original function
-        return await func(*args, **kwargs)
+        result = await func(*args, **kwargs)
+
+        # Run output inspections if needed
+        if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
+            result = self._inspect_output(result, func.__name__)
+
+        return result
 
     def _extract_value(
         self,
@@ -282,19 +344,25 @@ class ToolGuard:
 
         return None
 
-    def _inspect(self, value: str | None, func_name: str) -> Verdict | None:
-        """Run inspections on the value."""
+    def _inspect_input(
+        self, value: str | None, func_name: str
+    ) -> tuple[Verdict | None, str | None]:
+        """
+        Run input inspections on the value.
 
+        Returns:
+            Tuple of (verdict, sanitized_value).
+            If PII is redacted/masked/hashed, sanitized_value contains the clean text.
+        """
         if value is None:
-            return None
+            return None, None
 
         verdict: Verdict | None = None
+        sanitized_value: str | None = value
 
         # SQL inspection
         if self._sql_inspector and self.config.sql:
             verdict = self._sql_inspector.inspect(value)
-
-            # Audit log
             if self._audit_logger:
                 context = {
                     "tool": func_name,
@@ -303,7 +371,109 @@ class ToolGuard:
                 }
                 self._audit_logger.log(verdict, context=context)
 
-        return verdict
+            if verdict.blocked:
+                return verdict, None
+
+        # PII inspection on input
+        if self._pii_inspector and self.config.pii_apply_to in ("input", "both"):
+            pii_result = self._pii_inspector.inspect(value)
+
+            if self._audit_logger and pii_result.has_pii:
+                context = {
+                    "tool": func_name,
+                    "inspector": "pii",
+                    "pii_types": [t.value for t in pii_result.pii_types_found],
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(pii_result.verdict, context=context)
+
+            if pii_result.verdict.blocked:
+                return pii_result.verdict, None
+
+            # Use sanitized text if PII was transformed
+            sanitized_value = pii_result.sanitized_text
+
+        return verdict, sanitized_value
+
+    def _inspect_output(self, result: Any, func_name: str) -> Any:
+        """
+        Run PII inspection on output and sanitize if needed.
+
+        Handles string results and dicts with string values.
+        """
+        if not self._pii_inspector:
+            return result
+
+        if isinstance(result, str):
+            pii_result = self._pii_inspector.inspect(result)
+            if self._audit_logger and pii_result.has_pii:
+                context = {
+                    "tool": func_name,
+                    "inspector": "pii",
+                    "direction": "output",
+                    "pii_types": [t.value for t in pii_result.pii_types_found],
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(pii_result.verdict, context=context)
+
+            if pii_result.verdict.blocked:
+                return self._handle_block(pii_result.verdict, func_name)
+
+            return pii_result.sanitized_text
+
+        elif isinstance(result, dict):
+            # Recursively sanitize string values in dict
+            sanitized = {}
+            for key, val in result.items():
+                if isinstance(val, str):
+                    pii_result = self._pii_inspector.inspect(val)
+                    if pii_result.verdict.blocked:
+                        return self._handle_block(pii_result.verdict, func_name)
+                    sanitized[key] = pii_result.sanitized_text
+                else:
+                    sanitized[key] = val
+            return sanitized
+
+        return result
+
+    def _replace_value(
+        self,
+        func: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        new_value: str,
+    ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Replace the inspected value with a sanitized version."""
+        # If param_name specified, replace in kwargs or positional
+        if self.config.param_name:
+            if self.config.param_name in kwargs:
+                new_kwargs = dict(kwargs)
+                new_kwargs[self.config.param_name] = new_value
+                return args, new_kwargs
+
+            sig = inspect.signature(func)
+            params = list(sig.parameters.keys())
+            if self.config.param_name in params:
+                idx = params.index(self.config.param_name)
+                if idx < len(args):
+                    new_args = list(args)
+                    new_args[idx] = new_value
+                    return tuple(new_args), kwargs
+
+        # Auto-detect: replace first string argument
+        for key, value in kwargs.items():
+            if isinstance(value, str):
+                new_kwargs = dict(kwargs)
+                new_kwargs[key] = new_value
+                return args, new_kwargs
+
+        for i, arg in enumerate(args):
+            if isinstance(arg, str):
+                new_args = list(args)
+                new_args[i] = new_value
+                return tuple(new_args), kwargs
+
+        return args, kwargs
 
     def _handle_block(self, verdict: Verdict, func_name: str) -> Any:
         """Handle a blocked operation based on config."""
@@ -357,6 +527,10 @@ def guard(
     dialect: str | None = None,
     allowed_tables: set[str] | None = None,
     blocked_tables: set[str] | None = None,
+    pii: bool = False,
+    pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
+    pii_detect: list[str] | None = None,
+    pii_apply_to: Literal["input", "output", "both"] = "input",
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -375,6 +549,10 @@ def guard(
     dialect: str | None = None,
     allowed_tables: set[str] | None = None,
     blocked_tables: set[str] | None = None,
+    pii: bool = False,
+    pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
+    pii_detect: list[str] | None = None,
+    pii_apply_to: Literal["input", "output", "both"] = "input",
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -404,6 +582,15 @@ def guard(
         dialect: SQL dialect (mysql, postgres, snowflake, etc.)
         allowed_tables: Tables allowed for writes (safe-write mode)
         blocked_tables: Tables never allowed
+        pii: Enable PII detection (default: False)
+        pii_strategy: How to handle detected PII
+            - "block": Block the request entirely
+            - "redact": Replace PII with [TYPE REDACTED]
+            - "mask": Show only last 4 characters
+            - "hash": Replace with deterministic hash
+            - "monitor": Log but don't block or modify
+        pii_detect: List of PII types to detect (email, phone, ssn, credit_card, ip_address)
+        pii_apply_to: Where to apply PII detection (input, output, both)
         on_block: What to do when blocked
             - "raise": Raise PolicyViolation exception
             - "return_error": Return error dict to agent
@@ -428,16 +615,21 @@ def guard(
         def write_log(sql: str) -> None:
             db.execute(sql)
 
-        # Return error to agent instead of raising
-        @guard(on_block="return_error")
-        def safe_query(sql: str) -> dict:
-            return {"data": db.execute(sql)}
+        # PII protection with redaction
+        @guard(sql=False, pii=True, pii_strategy="redact")
+        def process_text(text: str) -> str:
+            return llm.process(text)
+
+        # Combined SQL and PII protection
+        @guard(sql=True, pii=True, pii_strategy="block")
+        def secure_query(query: str) -> dict:
+            return db.execute(query)
 
         # With AWS Strands @tool decorator
         from strands import tool
 
         @tool
-        @guard(mode="read-only")
+        @guard(mode="read-only", pii=True, pii_strategy="redact")
         def database_query(query: str) -> str:
             '''Execute a read-only SQL query.'''
             return json.dumps(db.execute(query))
@@ -450,6 +642,10 @@ def guard(
         dialect=dialect,
         allowed_tables=allowed_tables,
         blocked_tables=blocked_tables,
+        pii=pii,
+        pii_strategy=pii_strategy,
+        pii_detect=pii_detect,
+        pii_apply_to=pii_apply_to,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

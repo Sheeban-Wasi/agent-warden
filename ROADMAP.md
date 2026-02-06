@@ -1,6 +1,50 @@
 # Agent-Warden Roadmap
 
-This document outlines the feature roadmap for Agent-Warden, ensuring feature parity with LangChain middleware while adding unique security differentiators for AWS Strands.
+**The Security Layer for AI Agents. One Policy. Any Framework.**
+
+Agent-Warden provides security middleware for AI agents regardless of orchestration platform - AWS Strands, LangChain, LangGraph, CrewAI, AutoGen, or custom implementations.
+
+---
+
+## Vision: Platform-Agnostic Security
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        YOUR AI AGENTS                               │
+├────────────┬────────────┬────────────┬────────────┬────────────────┤
+│ AWS Strands│ LangChain  │  CrewAI    │  AutoGen   │ Custom/Other   │
+├────────────┴────────────┴────────────┴────────────┴────────────────┤
+│                       AGENT-WARDEN                                  │
+│              (One Security Policy, Any Platform)                    │
+├─────────────────────────────────────────────────────────────────────┤
+│ SQL Guard │ PII Guard │ File Guard │ Shell Guard │ RAG Guard │ API │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Architecture
+
+```
+warden/
+├── core/                      # Platform-agnostic (THE MOAT)
+│   ├── inspectors/
+│   │   ├── sql.py            # SQL injection protection
+│   │   ├── pii.py            # PII detection & handling
+│   │   ├── file.py           # File access control (planned)
+│   │   ├── shell.py          # Command sandboxing (planned)
+│   │   └── rag.py            # RAG/Vector security (planned)
+│   ├── verdict.py            # Universal result type
+│   ├── policy.py             # YAML policy engine
+│   └── audit.py              # Compliance logging
+│
+└── integrations/              # Thin adapters (~100 lines each)
+    ├── strands.py            # AWS Strands @guard decorator
+    ├── langchain.py          # LangChain middleware (planned)
+    ├── langgraph.py          # LangGraph integration (planned)
+    ├── crewai.py             # CrewAI integration (planned)
+    └── generic.py            # Any Python function (planned)
+```
+
+**Key Principle:** Core inspectors have ZERO orchestrator dependencies. Each integration is a thin wrapper that adapts the core to the platform's patterns.
 
 ---
 
@@ -11,41 +55,43 @@ This document outlines the feature roadmap for Agent-Warden, ensuring feature pa
 | Feature | Description | Status |
 |---------|-------------|--------|
 | **SQL Inspector** | AST-based SQL injection protection using sqlglot | ✅ Done |
+| **PII Inspector** | Regex-based PII detection with 5 strategies | ✅ Done |
 | **@guard Decorator** | Simple decorator for protecting Strands tools | ✅ Done |
 | **Policy Engine** | YAML-based configuration for multi-agent rules | ✅ Done |
 | **Audit Logger** | Structured JSON logging for compliance | ✅ Done |
 | **Multi-Agent Support** | Different permissions per agent | ✅ Done |
 | **Blocked/Allowed Tables** | Table-level access control | ✅ Done |
+| **Luhn Validation** | Credit card validation in PII inspector | ✅ Done |
+| **Confidence Scoring** | PII match confidence for reducing false positives | ✅ Done |
 
 ---
 
 ## Phase 1: Feature Parity with LangChain
 
-These features exist in LangChain middleware but not in AWS Strands. We should build them first.
+These features exist in LangChain middleware. We build them to ensure teams switching from LangChain have everything they need.
 
-### 1.1 PII Detection Guard
+### 1.1 PII Detection Guard ✅ DONE
 
-**LangChain has:** PIIDetection middleware with block/redact/mask/hash strategies.
+**Status:** Implemented in `warden/core/inspectors/pii.py`
 
-**What to build:**
 ```python
 @guard(
     pii=True,
-    pii_strategy="redact",  # block, redact, mask, hash
+    pii_strategy="redact",  # block, redact, mask, hash, monitor
     pii_detect=["email", "credit_card", "ssn", "phone", "ip_address"],
-    pii_apply_to="input,output,tool_results",
+    pii_apply_to="input",   # input, output, both
 )
 def my_tool(query: str) -> str: ...
 ```
 
-**Implementation approach:**
-- Built-in regex detectors for common PII types
-- Support custom regex patterns
-- Strategies: block (raise error), redact (replace with [REDACTED]), mask (show last 4), hash (deterministic)
-- Apply to input, output, or both
-
-**Priority:** 🔥 High
-**Effort:** Medium (2-3 days)
+**Features:**
+- ✅ Built-in regex detectors for 6 PII types
+- ✅ Custom regex pattern support
+- ✅ 5 strategies: block, redact, mask, hash, monitor
+- ✅ Luhn algorithm for credit card validation
+- ✅ Confidence scoring to reduce false positives
+- ✅ Input/output filtering
+- ✅ Deterministic hashing with optional salt
 
 ---
 
@@ -59,15 +105,16 @@ def my_tool(query: str) -> str: ...
     require_approval=True,
     approval_for=["DELETE", "UPDATE", "INSERT"],  # SQL operations
     approval_callback=my_approval_function,
+    approval_timeout=300,  # 5 minutes
 )
 def execute_sql(sql: str) -> str: ...
 ```
 
 **Implementation approach:**
 - Pause before executing sensitive operations
-- Call approval callback function
-- Support async approval (webhook, queue)
-- Timeout handling
+- Call approval callback function (sync or async)
+- Support webhook-based approval for async workflows
+- Timeout handling with configurable default action
 
 **Priority:** ⚡ Medium
 **Effort:** Medium (2-3 days)
@@ -88,12 +135,6 @@ def execute_sql(sql: str) -> str: ...
 )
 def my_tool(query: str) -> str: ...
 ```
-
-**Implementation approach:**
-- Track call counts per tool, per conversation
-- Enforce limits from policy.yaml
-- Support sliding window rate limiting
-- Return clear error messages
 
 **Priority:** ⚡ Medium
 **Effort:** Low (1 day)
@@ -116,12 +157,6 @@ def my_tool(query: str) -> str: ...
 def my_tool(query: str) -> str: ...
 ```
 
-**Implementation approach:**
-- Wrap tool execution with retry logic
-- Exponential backoff with jitter
-- Configurable retry conditions
-- Max delay cap
-
 **Priority:** 🔵 Low
 **Effort:** Low (1 day)
 
@@ -142,12 +177,6 @@ def my_tool(query: str) -> str: ...
 )
 def search_files(pattern: str) -> list: ...
 ```
-
-**Implementation approach:**
-- Path-based access control
-- Pattern blocking (glob patterns)
-- File size limits
-- Symlink traversal protection
 
 **Priority:** 🔥 High
 **Effort:** Medium (2 days)
@@ -170,12 +199,6 @@ def search_files(pattern: str) -> list: ...
 def run_command(cmd: str) -> str: ...
 ```
 
-**Implementation approach:**
-- Command parsing and validation
-- Whitelist/blacklist approach
-- Pattern detection for dangerous sequences
-- Optional Docker isolation
-
 **Priority:** 🔥 High
 **Effort:** Medium (2-3 days)
 
@@ -196,24 +219,40 @@ def run_command(cmd: str) -> str: ...
 def chat(message: str) -> str: ...
 ```
 
-**Implementation approach:**
-- Integrate with moderation APIs
-- Support multiple providers
-- Configurable thresholds
-- Block or flag content
-
 **Priority:** 🔵 Low
 **Effort:** Medium (2 days)
 
 ---
 
-## Phase 2: Differentiators (Unique to Agent-Warden)
+### 1.8 LangChain Integration Adapter
+
+**What to build:** Native LangChain middleware that wraps our core inspectors.
+
+```python
+from langchain.agents import create_agent
+from warden.integrations.langchain import WardenMiddleware
+
+agent = create_agent(
+    model="gpt-4.1",
+    tools=[my_tools],
+    middleware=[
+        WardenMiddleware.from_policy("policy.yaml"),
+    ],
+)
+```
+
+**Priority:** 🔥 High (Market Capture)
+**Effort:** Medium (2-3 days)
+
+---
+
+## Phase 2: Differentiators (Blue Ocean)
 
 These features don't exist in LangChain and will make Agent-Warden unique.
 
-### 2.1 RAG/Vector Database Guard
+### 2.1 RAG/Vector Database Guard 🎯 KEY DIFFERENTIATOR
 
-**Problem:** No access control for document retrieval in RAG systems.
+**Problem:** No access control for document retrieval in RAG systems. Agents can access any document in the vector store, leaking confidential data.
 
 **What to build:**
 ```python
@@ -222,44 +261,46 @@ These features don't exist in LangChain and will make Agent-Warden unique.
     allowed_collections=["public_docs", "product_info"],
     blocked_collections=["hr_confidential", "legal", "financial"],
     document_acl=user_permissions_function,  # Dynamic per-user
-    chunk_filtering=True,  # Filter sensitive chunks
+    chunk_filtering=True,  # Filter sensitive chunks from results
+    metadata_filters={"department": "engineering"},
 )
 def search_knowledge_base(query: str) -> list: ...
 ```
 
 **Implementation approach:**
-- Collection-level access control
-- Document-level ACLs (per user/role)
-- Chunk-level security (filter sensitive sections)
-- Metadata-based filtering
-- Support Pinecone, Weaviate, Chroma, etc.
+- **Collection-level access control** - Which vector collections can agent access
+- **Document-level ACLs** - Per-user/role document permissions
+- **Chunk-level security** - Filter sensitive sections from retrieved chunks
+- **Metadata-based filtering** - Only return documents matching criteria
+- **Provider adapters** - Support Pinecone, Weaviate, Chroma, Qdrant, pgvector
 
-**Priority:** 🔥 High (Blue Ocean)
+**Use cases:**
+- Multi-tenant SaaS where each customer's docs are isolated
+- Enterprise with department-level document access
+- Healthcare with patient record isolation (HIPAA)
+- Legal with matter-based document segregation
+
+**Priority:** 🔥 High (Blue Ocean - No competitor has this)
 **Effort:** High (1 week)
 
 ---
 
 ### 2.2 API Call Guard
 
-**Problem:** Agents can call external APIs with sensitive data.
+**Problem:** Agents can call external APIs with sensitive data, enabling data exfiltration.
 
 **What to build:**
 ```python
 @guard(
     api=True,
     allowed_domains=["api.company.com", "*.internal.com"],
-    blocked_domains=["*.pastebin.com", "webhook.site"],
+    blocked_domains=["*.pastebin.com", "webhook.site", "ngrok.io"],
     redact_headers=["Authorization", "X-API-Key"],
     log_requests=True,
+    max_request_size=1_000_000,
 )
 def call_api(url: str, data: dict) -> dict: ...
 ```
-
-**Implementation approach:**
-- Domain whitelist/blacklist
-- Header redaction in logs
-- Request/response inspection
-- Data exfiltration prevention
 
 **Priority:** ⚡ Medium
 **Effort:** Medium (2-3 days)
@@ -268,7 +309,7 @@ def call_api(url: str, data: dict) -> dict: ...
 
 ### 2.3 Data Exfiltration Prevention
 
-**Problem:** Agents can leak data through various channels.
+**Problem:** Agents can leak data through encoded outputs, large responses, or hidden channels.
 
 **What to build:**
 ```python
@@ -277,25 +318,19 @@ def call_api(url: str, data: dict) -> dict: ...
     max_output_size=10000,  # Characters
     block_base64=True,
     block_encoded_data=True,
-    sensitive_patterns=["password", "secret", "api_key"],
+    sensitive_patterns=["password", "secret", "api_key", "BEGIN RSA"],
 )
 def my_tool(query: str) -> str: ...
 ```
-
-**Implementation approach:**
-- Output size limits
-- Encoded data detection (base64, hex)
-- Sensitive pattern blocking in output
-- Anomaly detection (sudden large outputs)
 
 **Priority:** ⚡ Medium
 **Effort:** Medium (2 days)
 
 ---
 
-### 2.4 Semantic Query Guard
+### 2.4 Semantic Query Guard (Experimental)
 
-**Problem:** AST parsing doesn't catch semantic attacks.
+**Problem:** AST parsing doesn't catch semantic attacks where queries are technically valid but violate business logic.
 
 **What to build:**
 ```python
@@ -303,38 +338,89 @@ def my_tool(query: str) -> str: ...
     semantic=True,
     model="gpt-4o-mini",  # Use LLM to analyze intent
     block_if="query attempts to access data outside user's scope",
+    cache_ttl=3600,  # Cache semantic analysis
 )
 def query(sql: str) -> str: ...
 ```
-
-**Implementation approach:**
-- Use LLM to analyze query intent
-- Compare against policy rules
-- Catch attacks AST parsing misses
-- Fallback to AST for performance
 
 **Priority:** 🔵 Low (experimental)
 **Effort:** High (1 week)
 
 ---
 
-## Phase 3: Enterprise Features
+## Phase 3: Platform Integrations
 
-### 3.1 Centralized Policy Management
+Build thin adapters for each major AI agent framework.
+
+### 3.1 AWS Strands ✅ DONE
+
+```python
+from warden.integrations.strands import guard
+
+@tool
+@guard(sql=True, pii=True)
+def my_tool(query: str) -> str: ...
+```
+
+### 3.2 LangChain / LangGraph
+
+```python
+from warden.integrations.langchain import WardenMiddleware
+
+agent = create_agent(
+    model="gpt-4.1",
+    middleware=[WardenMiddleware.from_policy("policy.yaml")],
+)
+```
+
+### 3.3 CrewAI
+
+```python
+from warden.integrations.crewai import warden_tool
+
+@warden_tool(sql=True, pii=True)
+def research_tool(query: str) -> str: ...
+```
+
+### 3.4 Microsoft AutoGen
+
+```python
+from warden.integrations.autogen import WardenAgent
+
+agent = WardenAgent(
+    policy="policy.yaml",
+    base_agent=my_autogen_agent,
+)
+```
+
+### 3.5 Generic Python
+
+```python
+from warden import protect
+
+@protect(sql=True, pii=True)
+def any_function(input: str) -> str: ...
+```
+
+---
+
+## Phase 4: Enterprise Features
+
+### 4.1 Centralized Policy Management
 
 - Policy server with REST API
 - Hot-reload policies across all agents
 - Policy versioning and rollback
 - A/B testing for policy changes
 
-### 3.2 Real-time Monitoring Dashboard
+### 4.2 Real-time Monitoring Dashboard
 
 - Live view of all guard decisions
 - Alert on anomalies
 - Query patterns visualization
 - Agent behavior analytics
 
-### 3.3 Compliance Reporting
+### 4.3 Compliance Reporting
 
 - SOC2 audit reports
 - HIPAA compliance reports
@@ -353,91 +439,53 @@ def query(sql: str) -> str: ...
 | Multi-Agent Policies | ❌ | ✅ | **Done** |
 | YAML Configuration | ❌ | ✅ | **Done** |
 | Audit Logging | ⚡ Basic | ✅ Full | **Done** |
-| PII Detection | ✅ | ❌ | Phase 1 |
+| PII Detection | ✅ | ✅ | **Done** |
+| Credit Card Validation (Luhn) | ❌ | ✅ | **Done** |
+| Confidence Scoring | ❌ | ✅ | **Done** |
 | Human-in-the-Loop | ✅ | ❌ | Phase 1 |
 | Rate Limiting | ✅ | ⚡ Policy only | Phase 1 |
 | Tool Retry | ✅ | ❌ | Phase 1 |
 | File Access Control | ⚡ Basic | ❌ | Phase 1 |
 | Shell Sandboxing | ✅ | ❌ | Phase 1 |
 | Content Moderation | ✅ | ❌ | Phase 1 |
-| RAG Access Control | ❌ | ❌ | Phase 2 |
+| **RAG Access Control** | ❌ | ❌ | **Phase 2 (Blue Ocean)** |
 | API Call Guard | ❌ | ❌ | Phase 2 |
 | Exfiltration Prevention | ❌ | ❌ | Phase 2 |
 | Semantic Analysis | ❌ | ❌ | Phase 2 |
+| **Platform-Agnostic** | ❌ (LangChain only) | ✅ | **Architecture** |
 
 ---
 
 ## Implementation Priority
 
-### Immediate (Next Sprint)
-1. **PII Guard** - Compliance requirement
+### Immediate (This Week)
+1. ✅ **PII Guard** - Done
 2. **File Guard** - Data security
 3. **Shell Guard** - System security
 
-### Short-term (1-2 months)
-4. **Rate Limit Enforcement** - Use existing policy
-5. **Human Approval** - Enterprise requirement
-6. **RAG Guard** - Differentiator
+### Short-term (1-2 weeks)
+4. **LangChain Adapter** - Market capture
+5. **Rate Limit Enforcement** - Use existing policy
+6. **Human Approval** - Enterprise requirement
 
-### Medium-term (3-6 months)
-7. **API Call Guard**
-8. **Content Moderation**
-9. **Tool Retry**
-10. **Exfiltration Prevention**
+### Medium-term (1 month)
+7. **RAG Guard** - Blue Ocean differentiator
+8. **API Call Guard** - Exfiltration prevention
+9. **CrewAI/AutoGen Adapters** - Platform coverage
 
----
-
-## Architecture Notes
-
-All guards should follow the same pattern:
-
-```python
-from warden import guard
-
-@guard(
-    # SQL (existing)
-    sql=True,
-    mode="read-only",
-    blocked_tables=["secrets"],
-
-    # PII (new)
-    pii=True,
-    pii_strategy="redact",
-
-    # File (new)
-    file_access=True,
-    allowed_paths=["/data"],
-
-    # Shell (new)
-    shell=True,
-    shell_mode="restricted",
-
-    # RAG (new)
-    rag=True,
-    allowed_collections=["public"],
-
-    # Common
-    on_block="return_error",
-    audit=True,
-)
-def my_tool(input: str) -> str:
-    ...
-```
-
-Each guard type:
-1. Has its own inspector class
-2. Returns a Verdict
-3. Integrates with audit logging
-4. Configurable via policy.yaml
-5. Works with @guard decorator
+### Long-term (3-6 months)
+10. **Enterprise Dashboard**
+11. **Policy Server**
+12. **Compliance Reporting**
 
 ---
 
 ## Next Steps
 
-1. [ ] Build PII Guard (pii.py)
+1. [x] Build PII Guard (pii.py) ✅
 2. [ ] Build File Guard (file.py)
 3. [ ] Build Shell Guard (shell.py)
-4. [ ] Enforce rate limits in guard
-5. [ ] Add human approval flow
-6. [ ] Design RAG Guard architecture
+4. [ ] Build LangChain adapter
+5. [ ] Enforce rate limits in guard
+6. [ ] Add human approval flow
+7. [ ] Design RAG Guard architecture
