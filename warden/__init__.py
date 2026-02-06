@@ -23,8 +23,6 @@ Quick Start:
 
 __version__ = "0.1.0"
 
-# Core verdict types
-# Audit Logger
 from warden.core.audit import (
     AuditLevel,
     AuditLogger,
@@ -32,17 +30,25 @@ from warden.core.audit import (
     LogDestination,
     create_audit_logger,
 )
-
-# SQL Inspector (THE MOAT)
 from warden.core.inspectors.sql import (
     SQLInspector,
     SQLMode,
     check_sql,
     inspect_sql,
 )
-from warden.core.verdict import Verdict, VerdictType, create_block_verdict, create_pass_verdict
-
-# Exceptions
+from warden.core.policy import (
+    AgentPolicy,
+    Policy,
+    PolicyEngine,
+    RateLimits,
+    SQLPolicy,
+)
+from warden.core.verdict import (
+    Verdict,
+    VerdictType,
+    create_block_verdict,
+    create_pass_verdict,
+)
 from warden.exceptions import (
     ConfigurationError,
     CriticalViolation,
@@ -50,17 +56,6 @@ from warden.exceptions import (
     PolicyViolation,
     WardenError,
 )
-
-# Policy Engine
-from warden.core.policy import (
-    Policy,
-    PolicyEngine,
-    SQLPolicy,
-    AgentPolicy,
-    RateLimits,
-)
-
-# Strands Integration
 from warden.integrations.strands import (
     GuardConfig,
     PolicyGuard,

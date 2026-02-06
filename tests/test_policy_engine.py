@@ -9,24 +9,17 @@ Tests verify:
 - Integration with guards
 """
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from warden import (
+    CriticalViolation,
     Policy,
     PolicyEngine,
-    SQLPolicy,
-    AgentPolicy,
-    RateLimits,
     PolicyGuard,
-    create_policy_guard,
     PolicyViolation,
-    CriticalViolation,
+    create_policy_guard,
 )
 from warden.core.inspectors.sql import SQLMode
-
 
 # =============================================================================
 # POLICY PARSING TESTS
