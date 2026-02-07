@@ -6,7 +6,7 @@ Each inspector focuses on one type of threat:
 - PIIInspector: PII detection and redaction
 - FileInspector: File access security (path traversal, sensitive files)
 - ShellInspector: Shell command security (dangerous commands, injection)
-- ContextInspector: Identity and tenancy verification (coming soon)
+- RAGInspector: RAG document security (ABAC, content filtering)
 """
 
 from warden.core.inspectors.file import (
@@ -27,6 +27,18 @@ from warden.core.inspectors.pii import (
     check_pii,
     inspect_pii,
     redact_pii,
+)
+from warden.core.inspectors.rag import (
+    RAGContext,
+    RAGDocument,
+    RAGInspector,
+    RAGMatch,
+    RAGMode,
+    RAGResult,
+    RAGViolationType,
+    check_rag_documents,
+    filter_rag_documents,
+    inspect_rag_documents,
 )
 from warden.core.inspectors.shell import (
     ShellInspector,
@@ -70,4 +82,15 @@ __all__ = [
     "ShellResult",
     "check_shell",
     "inspect_shell",
+    # RAG Inspector
+    "RAGInspector",
+    "RAGMode",
+    "RAGViolationType",
+    "RAGDocument",
+    "RAGContext",
+    "RAGMatch",
+    "RAGResult",
+    "check_rag_documents",
+    "inspect_rag_documents",
+    "filter_rag_documents",
 ]

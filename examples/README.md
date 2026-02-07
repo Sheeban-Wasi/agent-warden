@@ -107,6 +107,23 @@ Shell command security. Shows:
 python examples/08_shell_guard.py
 ```
 
+### 9. RAG Guard (`09_rag_guard.py`)
+
+RAG document security with ABAC. Shows:
+- Collection access control (allow/block)
+- Classification hierarchy (public < internal < confidential < restricted)
+- Tenant isolation for multi-tenant systems
+- Agent scope enforcement (confused deputy prevention)
+- PII detection and redaction in retrieved content
+- Secret detection in documents
+- Prompt injection detection in documents
+- Output constraints (max documents, max length)
+- Works with any vector database
+
+```bash
+python examples/09_rag_guard.py
+```
+
 ---
 
 ## Quick Reference
@@ -171,6 +188,32 @@ check_shell("rm -rf /")   # False
 @guard(sql=False, shell=True, shell_allowed_commands={"ls", "cat"})
 def run_cmd(cmd: str) -> str:
     return subprocess.run(cmd, shell=True, capture_output=True).stdout
+```
+
+### RAG Protection
+
+```python
+from warden import RAGInspector, RAGContext, check_rag_documents
+
+# Quick filter
+safe_docs = check_rag_documents(
+    documents,
+    allowed_collections=["public_docs"],
+    classification_max="internal",
+)
+
+# Full inspection with ABAC context
+inspector = RAGInspector(
+    classification_max="internal",
+    scan_pii=True,
+    pii_strategy="redact",
+)
+context = RAGContext(
+    agent_id="support-bot",
+    tenant_id="acme-corp",
+)
+result = inspector.inspect(documents, context)
+safe_docs = result.allowed_documents  # Pass to LLM
 ```
 
 ---

@@ -49,6 +49,18 @@ from warden.core.inspectors.pii import (
     inspect_pii,
     redact_pii,
 )
+from warden.core.inspectors.rag import (
+    RAGContext,
+    RAGDocument,
+    RAGInspector,
+    RAGMatch,
+    RAGMode,
+    RAGResult,
+    RAGViolationType,
+    check_rag_documents,
+    filter_rag_documents,
+    inspect_rag_documents,
+)
 from warden.core.inspectors.shell import (
     ShellInspector,
     ShellMatch,
@@ -131,6 +143,17 @@ __all__ = [
     "ShellResult",
     "check_shell",
     "inspect_shell",
+    # RAG Inspector
+    "RAGInspector",
+    "RAGMode",
+    "RAGViolationType",
+    "RAGDocument",
+    "RAGContext",
+    "RAGMatch",
+    "RAGResult",
+    "check_rag_documents",
+    "inspect_rag_documents",
+    "filter_rag_documents",
     # Audit Logger
     "AuditLogger",
     "AuditLevel",

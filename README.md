@@ -6,7 +6,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-414%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-466%20passing-brightgreen.svg)]()
 [![AWS Strands](https://img.shields.io/badge/AWS%20Strands-Native%20Integration-FF9900?logo=amazon-aws)](https://github.com/strands-agents/strands-agents)
 
 ---
@@ -19,6 +19,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 | **PII Inspector** | Detect & handle PII (email, SSN, credit card, phone, IP) | ✅ Production |
 | **File Inspector** | Path traversal, sensitive files, cloud metadata protection | ✅ Production |
 | **Shell Inspector** | Dangerous commands, injection, reverse shells, privilege escalation | ✅ Production |
+| **RAG Inspector** | Document access control, classification, tenant isolation, content security | ✅ Production |
 | **Policy Engine** | YAML-based multi-agent configuration | ✅ Production |
 | **Audit Logger** | Structured JSON logging for compliance (SOC2, HIPAA, GDPR) | ✅ Production |
 
@@ -192,6 +193,55 @@ def run_command(cmd: str) -> str:
 
 ---
 
+### 5. RAG Inspector
+
+Enterprise-grade document security for RAG systems using ABAC (Attribute-Based Access Control).
+
+```python
+from warden import RAGInspector, RAGContext, check_rag_documents
+
+# Quick filter
+safe_docs = check_rag_documents(
+    documents,
+    allowed_collections=["public_docs"],
+    classification_max="internal",
+)
+
+# Full inspection with ABAC context
+inspector = RAGInspector(
+    classification_max="internal",           # Max classification level
+    allowed_collections={"public_docs"},     # Collection allowlist
+    scan_pii=True,                          # Scan content for PII
+    pii_strategy="redact",                  # Redact PII, don't block
+    scan_secrets=True,                      # Block documents with secrets
+    scan_prompt_injection=True,             # Block prompt injection in docs
+)
+
+# Context for identity-centric access control
+context = RAGContext(
+    agent_id="support-bot",
+    tenant_id="acme-corp",
+    clearance="internal",
+    departments={"support", "product"},
+)
+
+result = inspector.inspect(documents, context)
+result.allowed_documents  # Safe to pass to LLM
+result.blocked_documents  # Filtered out
+```
+
+**What's protected:**
+- Collection access control (allow/block collections)
+- Classification hierarchy (public < internal < confidential < restricted)
+- Tenant isolation (multi-tenant systems)
+- Agent scope enforcement (confused deputy prevention)
+- PII detection and redaction in content
+- Secret detection in documents
+- Prompt injection detection in retrieved content
+- Output constraints (max documents, max length)
+
+---
+
 ## Multi-Agent Policy Engine
 
 Define different security rules for each agent using YAML:
@@ -270,9 +320,10 @@ logger = AuditLogger(
 | PII detection | ~0.5ms |
 | File path check | ~0.1ms |
 | Shell command check | ~0.2ms |
+| RAG document filter (10 docs) | ~5ms |
 | Policy lookup | ~0.01ms |
 
-All inspections complete in under 1ms.
+All inspections complete in milliseconds.
 
 ---
 
@@ -290,6 +341,7 @@ See the [examples/](examples/) directory:
 | `06_pii_guard.py` | PII detection and redaction |
 | `07_file_access_guard.py` | File path security |
 | `08_shell_guard.py` | Shell command protection |
+| `09_rag_guard.py` | RAG document security with ABAC |
 
 ---
 
@@ -302,7 +354,8 @@ warden/
 │   │   ├── sql.py            # SQL injection protection
 │   │   ├── pii.py            # PII detection & handling
 │   │   ├── file.py           # File access control
-│   │   └── shell.py          # Shell command security
+│   │   ├── shell.py          # Shell command security
+│   │   └── rag.py            # RAG document access control
 │   ├── verdict.py            # Universal result type
 │   ├── policy.py             # YAML policy engine
 │   └── audit.py              # Compliance logging
@@ -319,9 +372,9 @@ warden/
 - [x] PII Inspector (5 strategies)
 - [x] File Inspector (path traversal, sensitive files)
 - [x] Shell Inspector (command injection, reverse shells)
+- [x] RAG Inspector (document access control, ABAC)
 - [x] Policy Engine (YAML-based)
 - [x] Audit Logger (compliance)
-- [ ] RAG/Vector Guard (document access control)
 - [ ] API Call Guard (exfiltration prevention)
 - [ ] LangChain/CrewAI/AutoGen adapters
 
