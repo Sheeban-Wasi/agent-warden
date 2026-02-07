@@ -7,6 +7,15 @@ specific frameworks like LangChain or AWS Strands.
 """
 
 from warden.core.inspectors.sql import SQLInspector, SQLMode, check_sql, inspect_sql
+from warden.core.rate_limiter import (
+    RateLimiter,
+    RateLimitMode,
+    RateLimitResult,
+    check_rate_limit,
+    clear_all_rate_limiters,
+    get_rate_limiter,
+    reset_rate_limits,
+)
 from warden.core.verdict import Verdict, VerdictType, create_block_verdict, create_pass_verdict
 
 __all__ = [
@@ -18,4 +27,12 @@ __all__ = [
     "SQLMode",
     "check_sql",
     "inspect_sql",
+    # Rate Limiter
+    "RateLimiter",
+    "RateLimitMode",
+    "RateLimitResult",
+    "check_rate_limit",
+    "get_rate_limiter",
+    "reset_rate_limits",
+    "clear_all_rate_limiters",
 ]

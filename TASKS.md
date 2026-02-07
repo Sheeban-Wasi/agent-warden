@@ -11,6 +11,7 @@ Last updated: 2026-02-07
 - [x] **Shell Inspector** - Dangerous commands, injection, reverse shells, privilege escalation
 - [x] **RAG Inspector** - Document access control, ABAC, classification, tenant isolation
 - [x] **API Inspector** - SSRF protection, domain control, data exfiltration prevention
+- [x] **Rate Limiter** - Sliding window counter, per-tool/global limits, @guard integration
 
 ### Infrastructure
 - [x] **Verdict System** - Universal result type for all inspectors
@@ -54,30 +55,22 @@ def execute_query(sql: str):
 
 **Challenge:** Requires async callback mechanism that varies by deployment (CLI, web, Slack).
 
-#### 2. Rate Limit Guard
-**Status:** Not started
-**Description:** Prevent agents from making too many calls in a time window.
-**Use cases:**
-- API rate limiting
-- Database query throttling
-- Cost control for LLM calls
-
-#### 3. LangChain Middleware Adapter
+#### 2. LangChain Middleware Adapter
 **Status:** Not started
 **Description:** Thin adapter for LangChain integration.
 **Location:** `warden/integrations/langchain.py`
 
 ### Medium Priority
 
-#### 4. Tool Retry with Backoff
+#### 3. Tool Retry with Backoff
 **Status:** Not started
 **Description:** Automatic retry with exponential backoff for transient failures.
 
-#### 5. Context/Identity Inspector
+#### 4. Context/Identity Inspector
 **Status:** Not started
 **Description:** Identity-centric access control beyond what RAG Inspector provides.
 
-#### 6. Improve PII Custom Detector API
+#### 5. Improve PII Custom Detector API
 **Status:** Not started
 **Description:** Match LangChain's detector signature for easier migration.
 
@@ -153,6 +146,11 @@ python -m pytest tests/ --cov=warden --cov-report=term-missing
 - 51 new tests for API Inspector
 - Example 10: API Guard demonstration
 - Fixed bandit B104 false positive
+- Integrated APIInspector into @guard decorator (api=True parameter)
+- 9 new integration tests
+- Implemented Rate Limiter with sliding window counter
+- Integrated RateLimiter into @guard decorator (rate_limit=True parameter)
+- 26 new rate limiter tests (563 total)
 
 ### Previous
 - RAG Inspector with ABAC, classification, tenant isolation

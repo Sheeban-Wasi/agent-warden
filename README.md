@@ -6,7 +6,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-537%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-563%20passing-brightgreen.svg)]()
 [![AWS Strands](https://img.shields.io/badge/AWS%20Strands-Native%20Integration-FF9900?logo=amazon-aws)](https://github.com/strands-agents/strands-agents)
 
 ---
@@ -21,6 +21,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 | **Shell Inspector** | Dangerous commands, injection, reverse shells, privilege escalation | ✅ Production |
 | **RAG Inspector** | Document access control, classification, tenant isolation, content security | ✅ Production |
 | **API Inspector** | SSRF protection, domain control, data exfiltration prevention | ✅ Production |
+| **Rate Limiter** | Throttle agent calls, prevent runaway loops, cost control | ✅ Production |
 | **Policy Engine** | YAML-based multi-agent configuration | ✅ Production |
 | **Audit Logger** | Structured JSON logging for compliance (SOC2, HIPAA, GDPR) | ✅ Production |
 
@@ -303,6 +304,45 @@ def fetch_api(url: str) -> dict:
 
 ---
 
+### 7. Rate Limiter
+
+Prevent runaway agent loops and control costs with sliding window rate limiting.
+
+```python
+from warden import RateLimiter, check_rate_limit, guard
+
+# Quick check
+if check_rate_limit("api-call", max_calls=10, window_seconds=60):
+    make_api_call()
+
+# Full rate limiter
+limiter = RateLimiter(max_calls=100, window_seconds=60)
+result = limiter.check("my-key")
+if result.allowed:
+    process()
+else:
+    print(f"Rate limited. Retry after {result.retry_after_seconds}s")
+
+# With @guard decorator
+@guard(
+    sql=False,
+    rate_limit=True,
+    rate_limit_max_calls=50,
+    rate_limit_window_seconds=60,
+)
+def call_api(url: str) -> dict:
+    return requests.get(url).json()
+```
+
+**Features:**
+- Sliding window counter algorithm
+- Per-tool or global rate limiting
+- Thread-safe implementation
+- Retry-after information
+- Monitor mode (log only)
+
+---
+
 ## Multi-Agent Policy Engine
 
 Define different security rules for each agent using YAML:
@@ -383,6 +423,7 @@ logger = AuditLogger(
 | Shell command check | ~0.2ms |
 | RAG document filter (10 docs) | ~5ms |
 | API call check | ~0.1ms |
+| Rate limit check | ~0.01ms |
 | Policy lookup | ~0.01ms |
 
 All inspections complete in milliseconds.

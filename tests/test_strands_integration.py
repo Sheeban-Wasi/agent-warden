@@ -941,3 +941,139 @@ class TestAPIGuardIntegration:
         # PII in URL should be blocked by PII guard
         with pytest.raises(PolicyViolation):
             make_request("https://api.example.com/user?email=john@example.com")
+
+
+# =============================================================================
+# RATE LIMIT GUARD INTEGRATION TESTS
+# =============================================================================
+
+
+class TestRateLimitGuardIntegration:
+    """Test the @guard decorator rate limiting integration."""
+
+    def test_rate_limit_allows_under_limit(self):
+        """Rate limit allows calls under the limit."""
+
+        @guard(
+            sql=False,
+            rate_limit=True,
+            rate_limit_max_calls=3,
+            rate_limit_window_seconds=60,
+            audit=False,
+        )
+        def my_tool(input: str) -> str:
+            return f"processed: {input}"
+
+        # First 3 calls should work
+        for i in range(3):
+            result = my_tool(f"test{i}")
+            assert "processed:" in result
+
+    def test_rate_limit_blocks_over_limit(self):
+        """Rate limit blocks calls over the limit."""
+
+        @guard(
+            sql=False,
+            rate_limit=True,
+            rate_limit_max_calls=2,
+            rate_limit_window_seconds=60,
+            audit=False,
+        )
+        def my_tool(input: str) -> str:
+            return f"processed: {input}"
+
+        # First 2 calls should work
+        my_tool("test1")
+        my_tool("test2")
+
+        # Third call should be blocked
+        with pytest.raises(PolicyViolation) as exc_info:
+            my_tool("test3")
+
+        assert "Rate limit exceeded" in str(exc_info.value)
+
+    def test_rate_limit_per_tool(self):
+        """Rate limit with tool key limits per function."""
+
+        @guard(
+            sql=False,
+            rate_limit=True,
+            rate_limit_max_calls=2,
+            rate_limit_window_seconds=60,
+            rate_limit_key="tool",
+            audit=False,
+        )
+        def tool_a(input: str) -> str:
+            return f"a: {input}"
+
+        @guard(
+            sql=False,
+            rate_limit=True,
+            rate_limit_max_calls=2,
+            rate_limit_window_seconds=60,
+            rate_limit_key="tool",
+            audit=False,
+        )
+        def tool_b(input: str) -> str:
+            return f"b: {input}"
+
+        # Each tool has its own limit
+        tool_a("1")
+        tool_a("2")
+
+        tool_b("1")
+        tool_b("2")
+
+        # tool_a is limited
+        with pytest.raises(PolicyViolation):
+            tool_a("3")
+
+        # tool_b is limited
+        with pytest.raises(PolicyViolation):
+            tool_b("3")
+
+    def test_rate_limit_return_error_mode(self):
+        """Rate limit can return error instead of raising."""
+
+        @guard(
+            sql=False,
+            rate_limit=True,
+            rate_limit_max_calls=1,
+            rate_limit_window_seconds=60,
+            on_block="return_error",
+            audit=False,
+        )
+        def my_tool(input: str) -> str:
+            return f"processed: {input}"
+
+        # First call works
+        result = my_tool("test1")
+        assert "processed:" in result
+
+        # Second call returns error
+        result = my_tool("test2")
+        assert isinstance(result, dict)
+        assert result.get("error") is True
+        assert result.get("blocked") is True
+        assert "Rate limit" in result.get("reason", "")
+
+    def test_rate_limit_combined_with_sql(self):
+        """Rate limit works with SQL guard combined."""
+
+        @guard(
+            sql=True,  # SQL protection
+            rate_limit=True,
+            rate_limit_max_calls=5,
+            rate_limit_window_seconds=60,
+            audit=False,
+        )
+        def query_db(sql: str) -> str:
+            return f"result: {sql}"
+
+        # Safe SQL within rate limit
+        result = query_db("SELECT * FROM users")
+        assert "result:" in result
+
+        # SQL injection blocked (not rate limit)
+        with pytest.raises((PolicyViolation, CriticalViolation)):
+            query_db("DROP TABLE users")

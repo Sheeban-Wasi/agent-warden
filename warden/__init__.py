@@ -93,6 +93,15 @@ from warden.core.policy import (
     RateLimits,
     SQLPolicy,
 )
+from warden.core.rate_limiter import (
+    RateLimiter,
+    RateLimitMode,
+    RateLimitResult,
+    check_rate_limit,
+    clear_all_rate_limiters,
+    get_rate_limiter,
+    reset_rate_limits,
+)
 from warden.core.verdict import (
     Verdict,
     VerdictType,
@@ -198,4 +207,12 @@ __all__ = [
     "GuardConfig",
     "create_sql_guard",
     "create_policy_guard",
+    # Rate Limiter
+    "RateLimiter",
+    "RateLimitMode",
+    "RateLimitResult",
+    "check_rate_limit",
+    "get_rate_limiter",
+    "reset_rate_limits",
+    "clear_all_rate_limiters",
 ]

@@ -53,6 +53,7 @@ from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
 from warden.core.inspectors.api import APIInspector
+from warden.core.rate_limiter import RateLimiter
 from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
 from warden.core.inspectors.rag import RAGContext, RAGInspector
@@ -157,6 +158,12 @@ class GuardConfig:
     api_scan_pii: bool = True
     api_scan_secrets: bool = True
 
+    # Rate limiting settings
+    rate_limit: bool = False
+    rate_limit_max_calls: int = 100
+    rate_limit_window_seconds: float = 60.0
+    rate_limit_key: Literal["tool", "global"] = "tool"  # Rate limit per tool or globally
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -246,6 +253,10 @@ class ToolGuard:
         api_require_https: bool = False,
         api_scan_pii: bool = True,
         api_scan_secrets: bool = True,
+        rate_limit: bool = False,
+        rate_limit_max_calls: int = 100,
+        rate_limit_window_seconds: float = 60.0,
+        rate_limit_key: Literal["tool", "global"] = "tool",
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -298,6 +309,10 @@ class ToolGuard:
             api_require_https=api_require_https,
             api_scan_pii=api_scan_pii,
             api_scan_secrets=api_scan_secrets,
+            rate_limit=rate_limit,
+            rate_limit_max_calls=rate_limit_max_calls,
+            rate_limit_window_seconds=rate_limit_window_seconds,
+            rate_limit_key=rate_limit_key,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -379,6 +394,14 @@ class ToolGuard:
                 require_https=api_require_https,
                 scan_pii=api_scan_pii,
                 scan_secrets=api_scan_secrets,
+            )
+
+        # Initialize rate limiter if needed
+        self._rate_limiter: RateLimiter | None = None
+        if rate_limit:
+            self._rate_limiter = RateLimiter(
+                max_calls=rate_limit_max_calls,
+                window_seconds=rate_limit_window_seconds,
             )
 
         # Initialize audit logger if needed
@@ -532,6 +555,50 @@ class ToolGuard:
             Tuple of (verdict, sanitized_value).
             If PII is redacted/masked/hashed, sanitized_value contains the clean text.
         """
+        # Rate limit check (before any other inspection)
+        if self._rate_limiter and self.config.rate_limit:
+            # Determine rate limit key
+            if self.config.rate_limit_key == "tool":
+                key = func_name
+            else:
+                key = "global"
+
+            rate_result = self._rate_limiter.check(key)
+
+            if self._audit_logger:
+                from warden.core.verdict import create_block_verdict, create_pass_verdict
+
+                if rate_result.allowed:
+                    verdict = create_pass_verdict(inspector="rate_limiter")
+                else:
+                    verdict = create_block_verdict(
+                        reason=f"Rate limit exceeded: {rate_result.current_count}/{rate_result.max_calls} "
+                        f"calls in {rate_result.window_seconds}s window",
+                        rule="rate_limit_exceeded",
+                        inspector="rate_limiter",
+                    )
+                context = {
+                    "tool": func_name,
+                    "inspector": "rate_limiter",
+                    "current_count": rate_result.current_count,
+                    "max_calls": rate_result.max_calls,
+                    "remaining": rate_result.remaining,
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(verdict, context=context)
+
+            if not rate_result.allowed:
+                from warden.core.verdict import create_block_verdict
+
+                verdict = create_block_verdict(
+                    reason=f"Rate limit exceeded: {rate_result.current_count}/{rate_result.max_calls} "
+                    f"calls in {rate_result.window_seconds}s window. "
+                    f"Retry after {rate_result.retry_after_seconds:.1f}s",
+                    rule="rate_limit_exceeded",
+                    inspector="rate_limiter",
+                )
+                return verdict, None
+
         if value is None:
             return None, None
 
@@ -846,6 +913,10 @@ def guard(
     api_require_https: bool = False,
     api_scan_pii: bool = True,
     api_scan_secrets: bool = True,
+    rate_limit: bool = False,
+    rate_limit_max_calls: int = 100,
+    rate_limit_window_seconds: float = 60.0,
+    rate_limit_key: Literal["tool", "global"] = "tool",
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -902,6 +973,10 @@ def guard(
     api_require_https: bool = False,
     api_scan_pii: bool = True,
     api_scan_secrets: bool = True,
+    rate_limit: bool = False,
+    rate_limit_max_calls: int = 100,
+    rate_limit_window_seconds: float = 60.0,
+    rate_limit_key: Literal["tool", "global"] = "tool",
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -1058,6 +1133,10 @@ def guard(
         api_require_https=api_require_https,
         api_scan_pii=api_scan_pii,
         api_scan_secrets=api_scan_secrets,
+        rate_limit=rate_limit,
+        rate_limit_max_calls=rate_limit_max_calls,
+        rate_limit_window_seconds=rate_limit_window_seconds,
+        rate_limit_key=rate_limit_key,
         on_block=on_block,
         error_message=error_message,
         audit=audit,
