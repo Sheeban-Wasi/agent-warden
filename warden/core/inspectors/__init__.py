@@ -5,6 +5,7 @@ Each inspector focuses on one type of threat:
 - SQLInspector: AST-based SQL injection detection
 - PIIInspector: PII detection and redaction
 - FileInspector: File access security (path traversal, sensitive files)
+- ShellInspector: Shell command security (dangerous commands, injection)
 - ContextInspector: Identity and tenancy verification (coming soon)
 """
 
@@ -26,6 +27,15 @@ from warden.core.inspectors.pii import (
     check_pii,
     inspect_pii,
     redact_pii,
+)
+from warden.core.inspectors.shell import (
+    ShellInspector,
+    ShellMatch,
+    ShellMode,
+    ShellResult,
+    ShellViolationType,
+    check_shell,
+    inspect_shell,
 )
 from warden.core.inspectors.sql import SQLInspector, SQLMode, check_sql, inspect_sql
 
@@ -52,4 +62,12 @@ __all__ = [
     "FileResult",
     "check_file",
     "inspect_file",
+    # Shell Inspector
+    "ShellInspector",
+    "ShellMode",
+    "ShellViolationType",
+    "ShellMatch",
+    "ShellResult",
+    "check_shell",
+    "inspect_shell",
 ]

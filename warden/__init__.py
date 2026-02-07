@@ -49,6 +49,15 @@ from warden.core.inspectors.pii import (
     inspect_pii,
     redact_pii,
 )
+from warden.core.inspectors.shell import (
+    ShellInspector,
+    ShellMatch,
+    ShellMode,
+    ShellResult,
+    ShellViolationType,
+    check_shell,
+    inspect_shell,
+)
 from warden.core.inspectors.sql import (
     SQLInspector,
     SQLMode,
@@ -114,6 +123,14 @@ __all__ = [
     "FileResult",
     "check_file",
     "inspect_file",
+    # Shell Inspector
+    "ShellInspector",
+    "ShellMode",
+    "ShellViolationType",
+    "ShellMatch",
+    "ShellResult",
+    "check_shell",
+    "inspect_shell",
     # Audit Logger
     "AuditLogger",
     "AuditLevel",

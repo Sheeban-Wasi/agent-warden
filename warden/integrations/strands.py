@@ -54,6 +54,7 @@ from typing import Any, Literal, ParamSpec, TypeVar, overload
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
 from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
+from warden.core.inspectors.shell import ShellInspector
 from warden.core.inspectors.sql import SQLInspector
 from warden.core.policy import Policy, PolicyEngine
 from warden.core.verdict import Verdict
@@ -120,6 +121,14 @@ class GuardConfig:
     file_blocked_paths: set[str] | None = None
     file_blocked_extensions: set[str] | None = None
 
+    # Shell command settings
+    shell: bool = False
+    shell_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "restricted"
+    shell_allowed_commands: set[str] | None = None
+    shell_blocked_commands: set[str] | None = None
+    shell_blocked_patterns: list[str] | None = None
+    shell_allow_operators: bool = False
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -181,6 +190,12 @@ class ToolGuard:
         file_allowed_paths: set[str] | None = None,
         file_blocked_paths: set[str] | None = None,
         file_blocked_extensions: set[str] | None = None,
+        shell: bool = False,
+        shell_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "restricted",
+        shell_allowed_commands: set[str] | None = None,
+        shell_blocked_commands: set[str] | None = None,
+        shell_blocked_patterns: list[str] | None = None,
+        shell_allow_operators: bool = False,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -205,6 +220,12 @@ class ToolGuard:
             file_allowed_paths=file_allowed_paths,
             file_blocked_paths=file_blocked_paths,
             file_blocked_extensions=file_blocked_extensions,
+            shell=shell,
+            shell_mode=shell_mode,
+            shell_allowed_commands=shell_allowed_commands,
+            shell_blocked_commands=shell_blocked_commands,
+            shell_blocked_patterns=shell_blocked_patterns,
+            shell_allow_operators=shell_allow_operators,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -241,6 +262,17 @@ class ToolGuard:
                 allowed_paths=file_allowed_paths,
                 blocked_paths=file_blocked_paths,
                 blocked_extensions=file_blocked_extensions,
+            )
+
+        # Initialize Shell inspector if needed
+        self._shell_inspector: ShellInspector | None = None
+        if shell:
+            self._shell_inspector = ShellInspector(
+                mode=shell_mode,
+                allowed_commands=shell_allowed_commands,
+                blocked_commands=shell_blocked_commands,
+                blocked_patterns=shell_blocked_patterns,
+                allow_operators=shell_allow_operators,
             )
 
         # Initialize audit logger if needed
@@ -420,6 +452,20 @@ class ToolGuard:
             if file_result.verdict.blocked:
                 return file_result.verdict, None
 
+        # Shell command inspection
+        if self._shell_inspector and self.config.shell:
+            shell_result = self._shell_inspector.inspect(value)
+            if self._audit_logger:
+                context = {
+                    "tool": func_name,
+                    "inspector": "shell",
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(shell_result.verdict, context=context)
+
+            if shell_result.verdict.blocked:
+                return shell_result.verdict, None
+
         # PII inspection on input
         if self._pii_inspector and self.config.pii_apply_to in ("input", "both"):
             pii_result = self._pii_inspector.inspect(value)
@@ -583,6 +629,12 @@ def guard(
     file_allowed_paths: set[str] | None = None,
     file_blocked_paths: set[str] | None = None,
     file_blocked_extensions: set[str] | None = None,
+    shell: bool = False,
+    shell_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "restricted",
+    shell_allowed_commands: set[str] | None = None,
+    shell_blocked_commands: set[str] | None = None,
+    shell_blocked_patterns: list[str] | None = None,
+    shell_allow_operators: bool = False,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -611,6 +663,12 @@ def guard(
     file_allowed_paths: set[str] | None = None,
     file_blocked_paths: set[str] | None = None,
     file_blocked_extensions: set[str] | None = None,
+    shell: bool = False,
+    shell_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "restricted",
+    shell_allowed_commands: set[str] | None = None,
+    shell_blocked_commands: set[str] | None = None,
+    shell_blocked_patterns: list[str] | None = None,
+    shell_allow_operators: bool = False,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -710,6 +768,12 @@ def guard(
         file_allowed_paths=file_allowed_paths,
         file_blocked_paths=file_blocked_paths,
         file_blocked_extensions=file_blocked_extensions,
+        shell=shell,
+        shell_mode=shell_mode,
+        shell_allowed_commands=shell_allowed_commands,
+        shell_blocked_commands=shell_blocked_commands,
+        shell_blocked_patterns=shell_blocked_patterns,
+        shell_allow_operators=shell_allow_operators,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

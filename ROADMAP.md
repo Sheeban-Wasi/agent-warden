@@ -57,6 +57,7 @@ warden/
 | **SQL Inspector** | AST-based SQL injection protection using sqlglot | ✅ Done |
 | **PII Inspector** | Regex-based PII detection with 5 strategies | ✅ Done |
 | **File Inspector** | Path traversal, sensitive files, cloud metadata protection | ✅ Done |
+| **Shell Inspector** | Command injection, dangerous commands, reverse shells | ✅ Done |
 | **@guard Decorator** | Simple decorator for protecting Strands tools | ✅ Done |
 | **Policy Engine** | YAML-based configuration for multi-agent rules | ✅ Done |
 | **Audit Logger** | Structured JSON logging for compliance | ✅ Done |
@@ -184,24 +185,32 @@ def search_files(pattern: str) -> list: ...
 
 ---
 
-### 1.6 Shell Command Guard
+### 1.6 Shell Command Guard ✅ DONE
 
-**LangChain has:** ShellTool with execution policies (Docker, sandbox).
+**Status:** Implemented in `warden/core/inspectors/shell.py`
 
-**What to build:**
 ```python
 @guard(
     shell=True,
-    shell_mode="restricted",  # restricted, sandbox, docker
-    allowed_commands=["ls", "cat", "grep", "python"],
-    blocked_commands=["rm", "sudo", "curl", "wget", "chmod"],
-    blocked_patterns=["rm -rf", "> /dev", "| bash"],
+    shell_mode="restricted",  # restricted, allowlist, blocklist, monitor
+    shell_allowed_commands={"ls", "cat", "grep", "head", "tail"},
+    shell_blocked_commands={"rm", "sudo", "curl", "wget", "chmod"},
+    shell_blocked_patterns=["rm -rf", "| bash"],
 )
 def run_command(cmd: str) -> str: ...
 ```
 
-**Priority:** 🔥 High
-**Effort:** Medium (2-3 days)
+**Features:**
+- ✅ Dangerous command blocking (rm, sudo, chmod, kill, etc.)
+- ✅ Command chaining detection (;, |, &&, ||, &)
+- ✅ Redirect injection detection (>, >>, <)
+- ✅ Command substitution detection ($(), backticks)
+- ✅ Reverse shell pattern detection (/dev/tcp, nc -e)
+- ✅ Privilege escalation detection (chmod 777, chown root)
+- ✅ Obfuscation detection ($IFS, base64, hex encoding)
+- ✅ Network exfiltration detection (curl -d @, wget --post-file)
+- ✅ Custom blocked patterns
+- ✅ 4 modes: restricted, allowlist, blocklist, monitor
 
 ---
 
@@ -447,7 +456,7 @@ def any_function(input: str) -> str: ...
 | Rate Limiting | ✅ | ⚡ Policy only | Phase 1 |
 | Tool Retry | ✅ | ❌ | Phase 1 |
 | File Access Control | ⚡ Basic | ✅ | **Done** |
-| Shell Sandboxing | ✅ | ❌ | Phase 1 |
+| Shell Command Guard | ✅ | ✅ | **Done** |
 | Content Moderation | ✅ | ❌ | Phase 1 |
 | **RAG Access Control** | ❌ | ❌ | **Phase 2 (Blue Ocean)** |
 | API Call Guard | ❌ | ❌ | Phase 2 |
@@ -462,7 +471,7 @@ def any_function(input: str) -> str: ...
 ### Immediate (This Week)
 1. ✅ **PII Guard** - Done
 2. ✅ **File Guard** - Done
-3. **Shell Guard** - System security
+3. ✅ **Shell Guard** - Done
 
 ### Short-term (1-2 weeks)
 4. **LangChain Adapter** - Market capture
@@ -485,7 +494,7 @@ def any_function(input: str) -> str: ...
 
 1. [x] Build PII Guard (pii.py) ✅
 2. [x] Build File Guard (file.py) ✅
-3. [ ] Build Shell Guard (shell.py)
+3. [x] Build Shell Guard (shell.py) ✅
 4. [ ] Build LangChain adapter
 5. [ ] Enforce rate limits in guard
 6. [ ] Add human approval flow
