@@ -608,7 +608,8 @@ class APIInspector:
                 return findings  # Critical - return immediately
 
         # Check for localhost
-        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        # nosec B104: We're blocking access to these addresses, not binding to them
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):  # nosec B104
             findings.append(APIMatch(
                 violation_type=APIViolationType.SSRF_LOCALHOST,
                 message=f"Localhost access blocked: {host}",
