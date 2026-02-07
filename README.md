@@ -6,7 +6,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-528%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-537%20passing-brightgreen.svg)]()
 [![AWS Strands](https://img.shields.io/badge/AWS%20Strands-Native%20Integration-FF9900?logo=amazon-aws)](https://github.com/strands-agents/strands-agents)
 
 ---
@@ -45,6 +45,7 @@ from warden import guard
     file_access=True,   # File path security
     shell=True,         # Shell command security
     rag=True,           # RAG document security
+    api=True,           # API call security (SSRF, exfiltration)
 )
 def agent_tool(query: str) -> str:
     """A protected agent tool."""
@@ -280,6 +281,17 @@ inspector = APIInspector(
 result = inspector.inspect("https://api.openai.com/v1/chat")
 if result.blocked:
     print(f"Blocked: {result.verdict.reason}")
+
+# With @guard decorator
+@guard(
+    sql=False,
+    api=True,
+    api_mode="allowlist",
+    api_allowed_domains={"api.openai.com", "api.anthropic.com"},
+    api_block_private_ips=True,
+)
+def fetch_api(url: str) -> dict:
+    return requests.get(url).json()
 ```
 
 **What's blocked:**

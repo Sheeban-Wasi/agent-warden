@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
+from warden.core.inspectors.api import APIInspector
 from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
 from warden.core.inspectors.rag import RAGContext, RAGInspector
@@ -143,6 +144,19 @@ class GuardConfig:
     rag_max_documents: int = 20
     rag_context: dict[str, Any] | None = None  # Static ABAC context
 
+    # API call security settings (applied to input - inspects URL/body before HTTP call)
+    api: bool = False
+    api_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "allowlist"
+    api_allowed_domains: set[str] | None = None
+    api_blocked_domains: set[str] | None = None
+    api_allowed_methods: set[str] | None = None
+    api_blocked_methods: set[str] | None = None
+    api_block_private_ips: bool = True
+    api_block_metadata_endpoints: bool = True
+    api_require_https: bool = False
+    api_scan_pii: bool = True
+    api_scan_secrets: bool = True
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -221,6 +235,17 @@ class ToolGuard:
         rag_scan_prompt_injection: bool = True,
         rag_max_documents: int = 20,
         rag_context: dict[str, Any] | None = None,
+        api: bool = False,
+        api_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "allowlist",
+        api_allowed_domains: set[str] | None = None,
+        api_blocked_domains: set[str] | None = None,
+        api_allowed_methods: set[str] | None = None,
+        api_blocked_methods: set[str] | None = None,
+        api_block_private_ips: bool = True,
+        api_block_metadata_endpoints: bool = True,
+        api_require_https: bool = False,
+        api_scan_pii: bool = True,
+        api_scan_secrets: bool = True,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -262,6 +287,17 @@ class ToolGuard:
             rag_scan_prompt_injection=rag_scan_prompt_injection,
             rag_max_documents=rag_max_documents,
             rag_context=rag_context,
+            api=api,
+            api_mode=api_mode,
+            api_allowed_domains=api_allowed_domains,
+            api_blocked_domains=api_blocked_domains,
+            api_allowed_methods=api_allowed_methods,
+            api_blocked_methods=api_blocked_methods,
+            api_block_private_ips=api_block_private_ips,
+            api_block_metadata_endpoints=api_block_metadata_endpoints,
+            api_require_https=api_require_https,
+            api_scan_pii=api_scan_pii,
+            api_scan_secrets=api_scan_secrets,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -328,6 +364,22 @@ class ToolGuard:
             )
             if rag_context:
                 self._rag_context = RAGContext.from_dict(rag_context)
+
+        # Initialize API inspector if needed (inspects input - URL/body before HTTP call)
+        self._api_inspector: APIInspector | None = None
+        if api:
+            self._api_inspector = APIInspector(
+                mode=api_mode,
+                allowed_domains=api_allowed_domains,
+                blocked_domains=api_blocked_domains,
+                allowed_methods=api_allowed_methods,
+                blocked_methods=api_blocked_methods,
+                block_private_ips=api_block_private_ips,
+                block_metadata_endpoints=api_block_metadata_endpoints,
+                require_https=api_require_https,
+                scan_pii=api_scan_pii,
+                scan_secrets=api_scan_secrets,
+            )
 
         # Initialize audit logger if needed
         self._audit_logger: AuditLogger | None = None
@@ -546,6 +598,20 @@ class ToolGuard:
 
             # Use sanitized text if PII was transformed
             sanitized_value = pii_result.sanitized_text
+
+        # API call inspection (URL/method/body before HTTP call)
+        if self._api_inspector and self.config.api:
+            api_result = self._api_inspector.inspect(value)
+            if self._audit_logger:
+                context = {
+                    "tool": func_name,
+                    "inspector": "api",
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(api_result.verdict, context=context)
+
+            if api_result.verdict.blocked:
+                return api_result.verdict, None
 
         return verdict, sanitized_value
 
@@ -769,6 +835,17 @@ def guard(
     rag_scan_prompt_injection: bool = True,
     rag_max_documents: int = 20,
     rag_context: dict[str, Any] | None = None,
+    api: bool = False,
+    api_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "allowlist",
+    api_allowed_domains: set[str] | None = None,
+    api_blocked_domains: set[str] | None = None,
+    api_allowed_methods: set[str] | None = None,
+    api_blocked_methods: set[str] | None = None,
+    api_block_private_ips: bool = True,
+    api_block_metadata_endpoints: bool = True,
+    api_require_https: bool = False,
+    api_scan_pii: bool = True,
+    api_scan_secrets: bool = True,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -814,6 +891,17 @@ def guard(
     rag_scan_prompt_injection: bool = True,
     rag_max_documents: int = 20,
     rag_context: dict[str, Any] | None = None,
+    api: bool = False,
+    api_mode: Literal["restricted", "allowlist", "blocklist", "monitor"] = "allowlist",
+    api_allowed_domains: set[str] | None = None,
+    api_blocked_domains: set[str] | None = None,
+    api_allowed_methods: set[str] | None = None,
+    api_blocked_methods: set[str] | None = None,
+    api_block_private_ips: bool = True,
+    api_block_metadata_endpoints: bool = True,
+    api_require_https: bool = False,
+    api_scan_pii: bool = True,
+    api_scan_secrets: bool = True,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -959,6 +1047,17 @@ def guard(
         rag_scan_prompt_injection=rag_scan_prompt_injection,
         rag_max_documents=rag_max_documents,
         rag_context=rag_context,
+        api=api,
+        api_mode=api_mode,
+        api_allowed_domains=api_allowed_domains,
+        api_blocked_domains=api_blocked_domains,
+        api_allowed_methods=api_allowed_methods,
+        api_blocked_methods=api_blocked_methods,
+        api_block_private_ips=api_block_private_ips,
+        api_block_metadata_endpoints=api_block_metadata_endpoints,
+        api_require_https=api_require_https,
+        api_scan_pii=api_scan_pii,
+        api_scan_secrets=api_scan_secrets,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

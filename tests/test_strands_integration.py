@@ -763,3 +763,181 @@ class TestRAGGuardIntegration:
         # Should block SQL injection
         with pytest.raises((PolicyViolation, CriticalViolation)):
             search_and_query("DROP TABLE users")
+
+
+# =============================================================================
+# API GUARD INTEGRATION TESTS
+# =============================================================================
+
+
+class TestAPIGuardIntegration:
+    """Test the @guard decorator API protection integration."""
+
+    def test_api_allows_safe_url(self):
+        """API guard allows safe public URLs."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_allowed_domains={"api.example.com"},
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        result = make_request("https://api.example.com/data")
+        assert result == "fetched: https://api.example.com/data"
+
+    def test_api_blocks_ssrf_localhost(self):
+        """API guard blocks localhost SSRF attempts."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        with pytest.raises(PolicyViolation):
+            make_request("http://localhost/admin")
+
+    def test_api_blocks_aws_metadata(self):
+        """API guard blocks AWS metadata endpoint."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        with pytest.raises(PolicyViolation):
+            make_request("http://169.254.169.254/latest/meta-data/")
+
+    def test_api_blocks_private_ip(self):
+        """API guard blocks private IP addresses."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        with pytest.raises(PolicyViolation):
+            make_request("http://192.168.1.1/internal")
+
+    def test_api_blocks_unauthorized_domain(self):
+        """API guard blocks domains not in allowlist."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_mode="allowlist",
+            api_allowed_domains={"api.example.com"},
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        with pytest.raises(PolicyViolation):
+            make_request("https://evil.com/exfiltrate")
+
+    def test_api_blocklist_mode(self):
+        """API guard blocklist mode blocks specific domains."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_mode="blocklist",
+            api_blocked_domains={"evil.com"},
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        # Should allow unlisted domain
+        result = make_request("https://api.example.com/data")
+        assert "fetched:" in result
+
+        # Should block listed domain
+        with pytest.raises(PolicyViolation):
+            make_request("https://evil.com/exfiltrate")
+
+    def test_api_https_enforcement(self):
+        """API guard enforces HTTPS when configured."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_mode="blocklist",
+            api_require_https=True,
+            api_scan_pii=False,
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        # HTTPS should work
+        result = make_request("https://api.example.com/data")
+        assert "fetched:" in result
+
+        # HTTP should be blocked
+        with pytest.raises(PolicyViolation):
+            make_request("http://api.example.com/data")
+
+    def test_api_return_error_mode(self):
+        """API guard can return error instead of raising."""
+
+        @guard(
+            sql=False,
+            api=True,
+            api_allowed_domains={"api.example.com"},
+            api_scan_pii=False,
+            on_block="return_error",
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        result = make_request("http://localhost/admin")
+
+        assert isinstance(result, dict)
+        assert result.get("error") is True
+        assert result.get("blocked") is True
+
+    def test_api_combined_with_pii(self):
+        """API guard works with PII guard combined."""
+
+        @guard(
+            sql=False,
+            pii=True,  # PII protection on input
+            pii_strategy="block",
+            api=True,  # API protection
+            api_allowed_domains={"api.example.com"},
+            api_scan_pii=False,  # Don't double-scan PII in API
+            audit=False,
+        )
+        def make_request(url: str) -> str:
+            return f"fetched: {url}"
+
+        # Safe URL should work
+        result = make_request("https://api.example.com/data")
+        assert "fetched:" in result
+
+        # SSRF should be blocked by API guard
+        with pytest.raises(PolicyViolation):
+            make_request("http://localhost/admin")
+
+        # PII in URL should be blocked by PII guard
+        with pytest.raises(PolicyViolation):
+            make_request("https://api.example.com/user?email=john@example.com")
