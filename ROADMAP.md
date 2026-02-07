@@ -56,6 +56,7 @@ warden/
 |---------|-------------|--------|
 | **SQL Inspector** | AST-based SQL injection protection using sqlglot | ✅ Done |
 | **PII Inspector** | Regex-based PII detection with 5 strategies | ✅ Done |
+| **File Inspector** | Path traversal, sensitive files, cloud metadata protection | ✅ Done |
 | **@guard Decorator** | Simple decorator for protecting Strands tools | ✅ Done |
 | **Policy Engine** | YAML-based configuration for multi-agent rules | ✅ Done |
 | **Audit Logger** | Structured JSON logging for compliance | ✅ Done |
@@ -445,7 +446,7 @@ def any_function(input: str) -> str: ...
 | Human-in-the-Loop | ✅ | ❌ | Phase 1 |
 | Rate Limiting | ✅ | ⚡ Policy only | Phase 1 |
 | Tool Retry | ✅ | ❌ | Phase 1 |
-| File Access Control | ⚡ Basic | ❌ | Phase 1 |
+| File Access Control | ⚡ Basic | ✅ | **Done** |
 | Shell Sandboxing | ✅ | ❌ | Phase 1 |
 | Content Moderation | ✅ | ❌ | Phase 1 |
 | **RAG Access Control** | ❌ | ❌ | **Phase 2 (Blue Ocean)** |
@@ -460,7 +461,7 @@ def any_function(input: str) -> str: ...
 
 ### Immediate (This Week)
 1. ✅ **PII Guard** - Done
-2. **File Guard** - Data security
+2. ✅ **File Guard** - Done
 3. **Shell Guard** - System security
 
 ### Short-term (1-2 weeks)
@@ -483,7 +484,7 @@ def any_function(input: str) -> str: ...
 ## Next Steps
 
 1. [x] Build PII Guard (pii.py) ✅
-2. [ ] Build File Guard (file.py)
+2. [x] Build File Guard (file.py) ✅
 3. [ ] Build Shell Guard (shell.py)
 4. [ ] Build LangChain adapter
 5. [ ] Enforce rate limits in guard

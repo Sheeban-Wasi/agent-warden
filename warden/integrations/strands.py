@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
+from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
 from warden.core.inspectors.sql import SQLInspector
 from warden.core.policy import Policy, PolicyEngine
@@ -111,6 +112,14 @@ class GuardConfig:
     pii_detect: list[str] | None = None
     pii_apply_to: Literal["input", "output", "both"] = "input"
 
+    # File access settings
+    file_access: bool = False
+    file_mode: Literal["strict", "allowlist", "blocklist", "monitor"] = "allowlist"
+    file_base_directory: str | None = None
+    file_allowed_paths: set[str] | None = None
+    file_blocked_paths: set[str] | None = None
+    file_blocked_extensions: set[str] | None = None
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -166,6 +175,12 @@ class ToolGuard:
         pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
         pii_detect: list[str] | None = None,
         pii_apply_to: Literal["input", "output", "both"] = "input",
+        file_access: bool = False,
+        file_mode: Literal["strict", "allowlist", "blocklist", "monitor"] = "allowlist",
+        file_base_directory: str | None = None,
+        file_allowed_paths: set[str] | None = None,
+        file_blocked_paths: set[str] | None = None,
+        file_blocked_extensions: set[str] | None = None,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -184,6 +199,12 @@ class ToolGuard:
             pii_strategy=pii_strategy,
             pii_detect=pii_detect,
             pii_apply_to=pii_apply_to,
+            file_access=file_access,
+            file_mode=file_mode,
+            file_base_directory=file_base_directory,
+            file_allowed_paths=file_allowed_paths,
+            file_blocked_paths=file_blocked_paths,
+            file_blocked_extensions=file_blocked_extensions,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -209,6 +230,17 @@ class ToolGuard:
             self._pii_inspector = PIIInspector(
                 strategy=pii_strategy,
                 detect_types=pii_detect,
+            )
+
+        # Initialize File inspector if needed
+        self._file_inspector: FileInspector | None = None
+        if file_access:
+            self._file_inspector = FileInspector(
+                mode=file_mode,
+                base_directory=file_base_directory,
+                allowed_paths=file_allowed_paths,
+                blocked_paths=file_blocked_paths,
+                blocked_extensions=file_blocked_extensions,
             )
 
         # Initialize audit logger if needed
@@ -374,6 +406,20 @@ class ToolGuard:
             if verdict.blocked:
                 return verdict, None
 
+        # File access inspection
+        if self._file_inspector and self.config.file_access:
+            file_result = self._file_inspector.inspect(value)
+            if self._audit_logger:
+                context = {
+                    "tool": func_name,
+                    "inspector": "file",
+                    **self.config.audit_context,
+                }
+                self._audit_logger.log(file_result.verdict, context=context)
+
+            if file_result.verdict.blocked:
+                return file_result.verdict, None
+
         # PII inspection on input
         if self._pii_inspector and self.config.pii_apply_to in ("input", "both"):
             pii_result = self._pii_inspector.inspect(value)
@@ -531,6 +577,12 @@ def guard(
     pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
     pii_detect: list[str] | None = None,
     pii_apply_to: Literal["input", "output", "both"] = "input",
+    file_access: bool = False,
+    file_mode: Literal["strict", "allowlist", "blocklist", "monitor"] = "allowlist",
+    file_base_directory: str | None = None,
+    file_allowed_paths: set[str] | None = None,
+    file_blocked_paths: set[str] | None = None,
+    file_blocked_extensions: set[str] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -553,6 +605,12 @@ def guard(
     pii_strategy: Literal["block", "redact", "mask", "hash", "monitor"] = "block",
     pii_detect: list[str] | None = None,
     pii_apply_to: Literal["input", "output", "both"] = "input",
+    file_access: bool = False,
+    file_mode: Literal["strict", "allowlist", "blocklist", "monitor"] = "allowlist",
+    file_base_directory: str | None = None,
+    file_allowed_paths: set[str] | None = None,
+    file_blocked_paths: set[str] | None = None,
+    file_blocked_extensions: set[str] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -646,6 +704,12 @@ def guard(
         pii_strategy=pii_strategy,
         pii_detect=pii_detect,
         pii_apply_to=pii_apply_to,
+        file_access=file_access,
+        file_mode=file_mode,
+        file_base_directory=file_base_directory,
+        file_allowed_paths=file_allowed_paths,
+        file_blocked_paths=file_blocked_paths,
+        file_blocked_extensions=file_blocked_extensions,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

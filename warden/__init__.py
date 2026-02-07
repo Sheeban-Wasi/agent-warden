@@ -30,6 +30,15 @@ from warden.core.audit import (
     LogDestination,
     create_audit_logger,
 )
+from warden.core.inspectors.file import (
+    FileInspector,
+    FileMatch,
+    FileMode,
+    FileResult,
+    FileViolationType,
+    check_file,
+    inspect_file,
+)
 from warden.core.inspectors.pii import (
     PIIInspector,
     PIIMatch,
@@ -97,6 +106,14 @@ __all__ = [
     "check_pii",
     "inspect_pii",
     "redact_pii",
+    # File Inspector
+    "FileInspector",
+    "FileMode",
+    "FileViolationType",
+    "FileMatch",
+    "FileResult",
+    "check_file",
+    "inspect_file",
     # Audit Logger
     "AuditLogger",
     "AuditLevel",
