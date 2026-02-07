@@ -30,6 +30,16 @@ from warden.core.audit import (
     LogDestination,
     create_audit_logger,
 )
+from warden.core.inspectors.api import (
+    APIInspector,
+    APIMatch,
+    APIMode,
+    APIRequest,
+    APIResult,
+    APIViolationType,
+    check_api_call,
+    inspect_api_call,
+)
 from warden.core.inspectors.file import (
     FileInspector,
     FileMatch,
@@ -113,6 +123,15 @@ __all__ = [
     "VerdictType",
     "create_pass_verdict",
     "create_block_verdict",
+    # API Inspector
+    "APIInspector",
+    "APIMode",
+    "APIViolationType",
+    "APIRequest",
+    "APIMatch",
+    "APIResult",
+    "check_api_call",
+    "inspect_api_call",
     # SQL Inspector
     "SQLInspector",
     "SQLMode",

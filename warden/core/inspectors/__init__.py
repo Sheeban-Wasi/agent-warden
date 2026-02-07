@@ -7,8 +7,19 @@ Each inspector focuses on one type of threat:
 - FileInspector: File access security (path traversal, sensitive files)
 - ShellInspector: Shell command security (dangerous commands, injection)
 - RAGInspector: RAG document security (ABAC, content filtering)
+- APIInspector: API call security (SSRF, data exfiltration)
 """
 
+from warden.core.inspectors.api import (
+    APIInspector,
+    APIMatch,
+    APIMode,
+    APIRequest,
+    APIResult,
+    APIViolationType,
+    check_api_call,
+    inspect_api_call,
+)
 from warden.core.inspectors.file import (
     FileInspector,
     FileMatch,
@@ -52,6 +63,15 @@ from warden.core.inspectors.shell import (
 from warden.core.inspectors.sql import SQLInspector, SQLMode, check_sql, inspect_sql
 
 __all__ = [
+    # API Inspector
+    "APIInspector",
+    "APIMode",
+    "APIViolationType",
+    "APIRequest",
+    "APIMatch",
+    "APIResult",
+    "check_api_call",
+    "inspect_api_call",
     # SQL Inspector
     "SQLInspector",
     "SQLMode",

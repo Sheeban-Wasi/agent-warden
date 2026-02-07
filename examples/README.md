@@ -124,6 +124,21 @@ RAG document security with ABAC. Shows:
 python examples/09_rag_guard.py
 ```
 
+### 10. API Guard (`10_api_guard.py`)
+
+API call security for preventing data exfiltration and SSRF attacks. Shows:
+- SSRF protection (private IPs, localhost, cloud metadata endpoints)
+- Domain allowlist/blocklist with wildcard support
+- PII and secret detection in requests (URL, body, headers)
+- HTTP method restrictions (restrict to GET/HEAD in safe mode)
+- HTTPS enforcement
+- Data exfiltration prevention
+- Audit trail generation
+
+```bash
+python examples/10_api_guard.py
+```
+
 ---
 
 ## Quick Reference
@@ -214,6 +229,27 @@ context = RAGContext(
 )
 result = inspector.inspect(documents, context)
 safe_docs = result.allowed_documents  # Pass to LLM
+```
+
+### API Protection
+
+```python
+from warden import check_api_call, inspect_api_call, APIInspector
+
+# Quick check
+check_api_call("https://api.openai.com/v1/chat")  # True
+check_api_call("http://169.254.169.254/meta-data/")  # False (AWS metadata)
+
+# With domain allowlist
+inspector = APIInspector(
+    mode="allowlist",
+    allowed_domains={"api.openai.com", "api.anthropic.com"},
+    scan_pii=True,
+    scan_secrets=True,
+)
+result = inspector.inspect("https://api.openai.com/v1/chat")
+if result.blocked:
+    print(f"Blocked: {result.verdict.reason}")
 ```
 
 ---
