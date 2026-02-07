@@ -54,6 +54,7 @@ from typing import Any, Literal, ParamSpec, TypeVar, overload
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
 from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
+from warden.core.inspectors.rag import RAGContext, RAGInspector
 from warden.core.inspectors.shell import ShellInspector
 from warden.core.inspectors.sql import SQLInspector
 from warden.core.policy import Policy, PolicyEngine
@@ -129,6 +130,19 @@ class GuardConfig:
     shell_blocked_patterns: list[str] | None = None
     shell_allow_operators: bool = False
 
+    # RAG document security settings (applied to output)
+    rag: bool = False
+    rag_mode: Literal["strict", "filtered", "monitor"] = "filtered"
+    rag_allowed_collections: set[str] | None = None
+    rag_blocked_collections: set[str] | None = None
+    rag_classification_max: str | None = None
+    rag_scan_pii: bool = True
+    rag_pii_strategy: Literal["block", "redact"] = "redact"
+    rag_scan_secrets: bool = True
+    rag_scan_prompt_injection: bool = True
+    rag_max_documents: int = 20
+    rag_context: dict[str, Any] | None = None  # Static ABAC context
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -196,6 +210,17 @@ class ToolGuard:
         shell_blocked_commands: set[str] | None = None,
         shell_blocked_patterns: list[str] | None = None,
         shell_allow_operators: bool = False,
+        rag: bool = False,
+        rag_mode: Literal["strict", "filtered", "monitor"] = "filtered",
+        rag_allowed_collections: set[str] | None = None,
+        rag_blocked_collections: set[str] | None = None,
+        rag_classification_max: str | None = None,
+        rag_scan_pii: bool = True,
+        rag_pii_strategy: Literal["block", "redact"] = "redact",
+        rag_scan_secrets: bool = True,
+        rag_scan_prompt_injection: bool = True,
+        rag_max_documents: int = 20,
+        rag_context: dict[str, Any] | None = None,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -226,6 +251,17 @@ class ToolGuard:
             shell_blocked_commands=shell_blocked_commands,
             shell_blocked_patterns=shell_blocked_patterns,
             shell_allow_operators=shell_allow_operators,
+            rag=rag,
+            rag_mode=rag_mode,
+            rag_allowed_collections=rag_allowed_collections,
+            rag_blocked_collections=rag_blocked_collections,
+            rag_classification_max=rag_classification_max,
+            rag_scan_pii=rag_scan_pii,
+            rag_pii_strategy=rag_pii_strategy,
+            rag_scan_secrets=rag_scan_secrets,
+            rag_scan_prompt_injection=rag_scan_prompt_injection,
+            rag_max_documents=rag_max_documents,
+            rag_context=rag_context,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -274,6 +310,24 @@ class ToolGuard:
                 blocked_patterns=shell_blocked_patterns,
                 allow_operators=shell_allow_operators,
             )
+
+        # Initialize RAG inspector if needed (inspects output, not input)
+        self._rag_inspector: RAGInspector | None = None
+        self._rag_context: RAGContext | None = None
+        if rag:
+            self._rag_inspector = RAGInspector(
+                mode=rag_mode,
+                allowed_collections=rag_allowed_collections,
+                blocked_collections=rag_blocked_collections,
+                classification_max=rag_classification_max,
+                scan_pii=rag_scan_pii,
+                pii_strategy=rag_pii_strategy,
+                scan_secrets=rag_scan_secrets,
+                scan_prompt_injection=rag_scan_prompt_injection,
+                max_documents=rag_max_documents,
+            )
+            if rag_context:
+                self._rag_context = RAGContext.from_dict(rag_context)
 
         # Initialize audit logger if needed
         self._audit_logger: AuditLogger | None = None
@@ -340,6 +394,10 @@ class ToolGuard:
         if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
             result = self._inspect_output(result, func.__name__)
 
+        # RAG inspection on output (filters retrieved documents)
+        if self._rag_inspector and self.config.rag:
+            result = self._inspect_rag_output(result, func.__name__)
+
         return result
 
     async def _execute_async(
@@ -369,6 +427,10 @@ class ToolGuard:
         # Run output inspections if needed
         if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
             result = self._inspect_output(result, func.__name__)
+
+        # RAG inspection on output (filters retrieved documents)
+        if self._rag_inspector and self.config.rag:
+            result = self._inspect_rag_output(result, func.__name__)
 
         return result
 
@@ -528,6 +590,67 @@ class ToolGuard:
 
         return result
 
+    def _inspect_rag_output(self, result: Any, func_name: str) -> Any:
+        """
+        Inspect RAG output (retrieved documents) and filter based on security policy.
+
+        RAG inspection is different from other inspectors - it filters the OUTPUT
+        (the documents returned by the retrieval function) not the input.
+
+        Args:
+            result: The function's return value (should be list of documents)
+            func_name: Name of the function for logging
+
+        Returns:
+            Filtered list of allowed documents, or blocks based on config
+        """
+        if not self._rag_inspector:
+            return result
+
+        # Handle different result formats
+        documents: list[dict[str, Any]] = []
+
+        if isinstance(result, list):
+            documents = result
+        elif isinstance(result, dict) and "documents" in result:
+            # Common format: {"documents": [...], "metadata": ...}
+            documents = result["documents"]
+        else:
+            # Can't inspect non-list results
+            return result
+
+        if not documents:
+            return result
+
+        # Run RAG inspection
+        rag_result = self._rag_inspector.inspect(documents, self._rag_context)
+
+        # Log the inspection
+        if self._audit_logger:
+            context = {
+                "tool": func_name,
+                "inspector": "rag",
+                "documents_total": len(documents),
+                "documents_allowed": len(rag_result.allowed_documents),
+                "documents_blocked": len(rag_result.blocked_documents),
+                **self.config.audit_context,
+            }
+            self._audit_logger.log(rag_result.verdict, context=context)
+
+        # Handle based on mode and verdict
+        if rag_result.verdict.blocked:
+            # In strict mode with blocked verdict
+            return self._handle_block(rag_result.verdict, func_name)
+
+        # Return filtered documents
+        filtered_docs = [doc.to_dict() for doc in rag_result.allowed_documents]
+
+        # Preserve original format
+        if isinstance(result, dict) and "documents" in result:
+            return {**result, "documents": filtered_docs}
+
+        return filtered_docs
+
     def _replace_value(
         self,
         func: Callable[..., Any],
@@ -635,6 +758,17 @@ def guard(
     shell_blocked_commands: set[str] | None = None,
     shell_blocked_patterns: list[str] | None = None,
     shell_allow_operators: bool = False,
+    rag: bool = False,
+    rag_mode: Literal["strict", "filtered", "monitor"] = "filtered",
+    rag_allowed_collections: set[str] | None = None,
+    rag_blocked_collections: set[str] | None = None,
+    rag_classification_max: str | None = None,
+    rag_scan_pii: bool = True,
+    rag_pii_strategy: Literal["block", "redact"] = "redact",
+    rag_scan_secrets: bool = True,
+    rag_scan_prompt_injection: bool = True,
+    rag_max_documents: int = 20,
+    rag_context: dict[str, Any] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -669,6 +803,17 @@ def guard(
     shell_blocked_commands: set[str] | None = None,
     shell_blocked_patterns: list[str] | None = None,
     shell_allow_operators: bool = False,
+    rag: bool = False,
+    rag_mode: Literal["strict", "filtered", "monitor"] = "filtered",
+    rag_allowed_collections: set[str] | None = None,
+    rag_blocked_collections: set[str] | None = None,
+    rag_classification_max: str | None = None,
+    rag_scan_pii: bool = True,
+    rag_pii_strategy: Literal["block", "redact"] = "redact",
+    rag_scan_secrets: bool = True,
+    rag_scan_prompt_injection: bool = True,
+    rag_max_documents: int = 20,
+    rag_context: dict[str, Any] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -707,6 +852,20 @@ def guard(
             - "monitor": Log but don't block or modify
         pii_detect: List of PII types to detect (email, phone, ssn, credit_card, ip_address)
         pii_apply_to: Where to apply PII detection (input, output, both)
+        rag: Enable RAG document security (default: False)
+        rag_mode: RAG inspection mode
+            - "strict": Block on any violation
+            - "filtered": Filter out violating docs, pass allowed ones
+            - "monitor": Log only, don't block
+        rag_allowed_collections: Collections allowed for retrieval
+        rag_blocked_collections: Collections never allowed
+        rag_classification_max: Maximum classification level (public, internal, etc.)
+        rag_scan_pii: Scan document content for PII
+        rag_pii_strategy: How to handle PII in documents (block, redact)
+        rag_scan_secrets: Scan document content for secrets
+        rag_scan_prompt_injection: Detect prompt injection in documents
+        rag_max_documents: Maximum documents to return
+        rag_context: Static ABAC context for filtering (agent_id, tenant_id, etc.)
         on_block: What to do when blocked
             - "raise": Raise PolicyViolation exception
             - "return_error": Return error dict to agent
@@ -736,10 +895,25 @@ def guard(
         def process_text(text: str) -> str:
             return llm.process(text)
 
-        # Combined SQL and PII protection
-        @guard(sql=True, pii=True, pii_strategy="block")
-        def secure_query(query: str) -> dict:
-            return db.execute(query)
+        # RAG document security - filter retrieved documents
+        @guard(
+            sql=False,
+            rag=True,
+            rag_allowed_collections={"public_docs", "help_articles"},
+            rag_classification_max="internal",
+            rag_scan_pii=True,
+        )
+        def search_knowledge(query: str) -> list[dict]:
+            return vectordb.search(query)
+
+        # RAG with ABAC context for tenant isolation
+        @guard(
+            sql=False,
+            rag=True,
+            rag_context={"agent_id": "support-bot", "tenant_id": "acme-corp"},
+        )
+        def search_tenant_docs(query: str) -> list[dict]:
+            return vectordb.search(query)
 
         # With AWS Strands @tool decorator
         from strands import tool
@@ -774,6 +948,17 @@ def guard(
         shell_blocked_commands=shell_blocked_commands,
         shell_blocked_patterns=shell_blocked_patterns,
         shell_allow_operators=shell_allow_operators,
+        rag=rag,
+        rag_mode=rag_mode,
+        rag_allowed_collections=rag_allowed_collections,
+        rag_blocked_collections=rag_blocked_collections,
+        rag_classification_max=rag_classification_max,
+        rag_scan_pii=rag_scan_pii,
+        rag_pii_strategy=rag_pii_strategy,
+        rag_scan_secrets=rag_scan_secrets,
+        rag_scan_prompt_injection=rag_scan_prompt_injection,
+        rag_max_documents=rag_max_documents,
+        rag_context=rag_context,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

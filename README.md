@@ -6,7 +6,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-466%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-477%20passing-brightgreen.svg)]()
 [![AWS Strands](https://img.shields.io/badge/AWS%20Strands-Native%20Integration-FF9900?logo=amazon-aws)](https://github.com/strands-agents/strands-agents)
 
 ---
@@ -43,6 +43,7 @@ from warden import guard
     pii=True,           # PII detection
     file_access=True,   # File path security
     shell=True,         # Shell command security
+    rag=True,           # RAG document security
 )
 def agent_tool(query: str) -> str:
     """A protected agent tool."""
@@ -228,6 +229,18 @@ context = RAGContext(
 result = inspector.inspect(documents, context)
 result.allowed_documents  # Safe to pass to LLM
 result.blocked_documents  # Filtered out
+
+# With @guard decorator (filters function output)
+@guard(
+    sql=False,
+    rag=True,
+    rag_allowed_collections={"public_docs", "help_articles"},
+    rag_classification_max="internal",
+    rag_scan_pii=True,
+    rag_pii_strategy="redact",
+)
+def search_knowledge(query: str) -> list[dict]:
+    return vectordb.search(query)  # Warden filters before return
 ```
 
 **What's protected:**
