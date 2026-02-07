@@ -51,57 +51,130 @@ Complete production-ready configuration. Shows:
 - Centralized audit logger
 - Blocked tables for sensitive data
 - Proper error handling patterns
-- Both read-only and safe-write guards
 
 ```bash
-# With defaults
-python examples/04_production_setup.py
-
-# With custom config
-WARDEN_LOG_DIR=/tmp/logs \
-WARDEN_AUDIT_LEVEL=block \
-WARDEN_SQL_DIALECT=mysql \
 python examples/04_production_setup.py
 ```
+
+### 5. Multi-Agent Policy (`05_multi_agent_policy.py`)
+
+YAML-based policy engine for multi-agent systems. Shows:
+- Loading policies from YAML files
+- Agent-specific permissions
+- Policy guards for different agents
+
+```bash
+python examples/05_multi_agent_policy.py
+```
+
+### 6. PII Guard (`06_pii_guard.py`)
+
+PII detection and handling. Shows:
+- Detecting PII (email, SSN, credit card, phone, IP)
+- 5 strategies: block, redact, mask, hash, monitor
+- Luhn algorithm for credit card validation
+- Custom regex patterns
+- @guard decorator integration
+
+```bash
+python examples/06_pii_guard.py
+```
+
+### 7. File Access Guard (`07_file_access_guard.py`)
+
+File path security. Shows:
+- Path traversal detection
+- Sensitive file blocking (.env, .ssh, credentials)
+- Cloud metadata protection (169.254.169.254)
+- Base directory constraints
+- @guard decorator integration
+
+```bash
+python examples/07_file_access_guard.py
+```
+
+### 8. Shell Guard (`08_shell_guard.py`)
+
+Shell command security. Shows:
+- Dangerous command blocking (rm, sudo, chmod)
+- Command chaining detection (;, |, &&)
+- Reverse shell detection (/dev/tcp, nc -e)
+- Privilege escalation detection
+- Obfuscation detection ($IFS, base64)
+- @guard decorator integration
+
+```bash
+python examples/08_shell_guard.py
+```
+
+---
 
 ## Quick Reference
 
-### Check a Query
+### SQL Protection
 
 ```python
-from warden import check_sql, inspect_sql
+from warden import check_sql, guard
 
 # Quick check
-if check_sql("SELECT * FROM users"):
-    execute_query(query)
+check_sql("SELECT * FROM users")  # True
+check_sql("DROP TABLE users")     # False
 
-# Full inspection
-verdict = inspect_sql("DROP TABLE users")
-print(verdict.blocked)  # True
-print(verdict.reason)   # "Critical operation blocked: Drop"
-```
-
-### Protect a Function
-
-```python
-from warden import guard
-
-@guard(mode="read-only", on_block="return_error")
+# With decorator
+@guard(sql=True, mode="read-only")
 def query(sql: str) -> dict:
     return db.execute(sql)
 ```
 
-### Audit Logging
+### PII Protection
 
 ```python
-from warden import AuditLogger, LogDestination
+from warden import check_pii, redact_pii, guard
 
-logger = AuditLogger(
-    destinations=[LogDestination.FILE],
-    log_file="audit.jsonl",
-)
+# Quick check
+check_pii("Email: john@example.com")  # True (has PII)
+
+# Redact PII
+redact_pii("SSN: 123-45-6789")  # "SSN: [SSN REDACTED]"
+
+# With decorator
+@guard(sql=False, pii=True, pii_strategy="redact")
+def process(text: str) -> str:
+    return llm.process(text)
 ```
+
+### File Protection
+
+```python
+from warden import check_file, guard
+
+# Quick check
+check_file("/app/data/file.txt")   # True
+check_file("../../../etc/passwd")  # False
+
+# With decorator
+@guard(sql=False, file_access=True, file_base_directory="/app")
+def read_file(path: str) -> str:
+    return open(path).read()
+```
+
+### Shell Protection
+
+```python
+from warden import check_shell, guard
+
+# Quick check
+check_shell("ls -la")     # True
+check_shell("rm -rf /")   # False
+
+# With decorator
+@guard(sql=False, shell=True, shell_allowed_commands={"ls", "cat"})
+def run_cmd(cmd: str) -> str:
+    return subprocess.run(cmd, shell=True, capture_output=True).stdout
+```
+
+---
 
 ## More Information
 
-See the main [README.md](../readme.md) for complete documentation.
+See the main [README.md](../README.md) for complete documentation.
