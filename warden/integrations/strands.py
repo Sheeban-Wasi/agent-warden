@@ -55,6 +55,7 @@ from warden.core.audit import AuditLevel, AuditLogger, LogDestination
 from warden.core.hitl import ApprovalCallback, ApprovalRequest, HITLGuard, RiskLevel
 from warden.core.inspectors.api import APIInspector
 from warden.core.rate_limiter import RateLimiter
+from warden.core.retry import RetryConfig, RetryHandler, RetryStrategy
 from warden.core.inspectors.file import FileInspector
 from warden.core.inspectors.pii import PIIInspector
 from warden.core.inspectors.rag import RAGContext, RAGInspector
@@ -172,6 +173,15 @@ class GuardConfig:
     hitl_timeout_seconds: float | None = None
     hitl_default_on_timeout: bool = False  # Deny on timeout (safe default)
 
+    # Retry settings
+    retry: bool = False
+    retry_max_attempts: int = 3
+    retry_base_delay: float = 1.0
+    retry_max_delay: float = 60.0
+    retry_strategy: Literal["exponential", "linear", "constant", "fibonacci"] = "exponential"
+    retry_jitter: bool = True
+    retry_on: tuple[type[Exception], ...] | None = None  # Exception types to retry
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -270,6 +280,13 @@ class ToolGuard:
         hitl_triggers: dict[str, set[str]] | None = None,
         hitl_timeout_seconds: float | None = None,
         hitl_default_on_timeout: bool = False,
+        retry: bool = False,
+        retry_max_attempts: int = 3,
+        retry_base_delay: float = 1.0,
+        retry_max_delay: float = 60.0,
+        retry_strategy: Literal["exponential", "linear", "constant", "fibonacci"] = "exponential",
+        retry_jitter: bool = True,
+        retry_on: tuple[type[Exception], ...] | None = None,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -331,6 +348,13 @@ class ToolGuard:
             hitl_triggers=hitl_triggers,
             hitl_timeout_seconds=hitl_timeout_seconds,
             hitl_default_on_timeout=hitl_default_on_timeout,
+            retry=retry,
+            retry_max_attempts=retry_max_attempts,
+            retry_base_delay=retry_base_delay,
+            retry_max_delay=retry_max_delay,
+            retry_strategy=retry_strategy,
+            retry_jitter=retry_jitter,
+            retry_on=retry_on,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -432,6 +456,20 @@ class ToolGuard:
                 default_on_timeout=hitl_default_on_timeout,
             )
 
+        # Initialize retry handler if needed
+        self._retry_handler: RetryHandler | None = None
+        if retry:
+            self._retry_handler = RetryHandler(
+                RetryConfig(
+                    max_attempts=retry_max_attempts,
+                    base_delay=retry_base_delay,
+                    max_delay=retry_max_delay,
+                    strategy=RetryStrategy(retry_strategy),
+                    jitter=retry_jitter,
+                    retry_on=retry_on or (Exception,),
+                )
+            )
+
         # Initialize audit logger if needed
         self._audit_logger: AuditLogger | None = None
         if audit and audit_logger is None:
@@ -490,8 +528,15 @@ class ToolGuard:
         if sanitized_input is not None and sanitized_input != value:
             args, kwargs = self._replace_value(func, args, kwargs, sanitized_input)
 
-        # Execute the original function
-        result = func(*args, **kwargs)
+        # Execute the original function (with retry if configured)
+        if self._retry_handler and self.config.retry:
+            result, retry_result = self._retry_handler.execute(func, *args, **kwargs)
+            if not retry_result.success:
+                if retry_result.final_exception:
+                    raise retry_result.final_exception
+                return result  # type: ignore
+        else:
+            result = func(*args, **kwargs)
 
         # Run output inspections if needed
         if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
@@ -524,8 +569,17 @@ class ToolGuard:
         if sanitized_input is not None and sanitized_input != value:
             args, kwargs = self._replace_value(func, args, kwargs, sanitized_input)
 
-        # Execute the original function
-        result = await func(*args, **kwargs)
+        # Execute the original function (with retry if configured)
+        if self._retry_handler and self.config.retry:
+            result, retry_result = await self._retry_handler.execute_async(
+                func, *args, **kwargs
+            )
+            if not retry_result.success:
+                if retry_result.final_exception:
+                    raise retry_result.final_exception
+                return result  # type: ignore
+        else:
+            result = await func(*args, **kwargs)
 
         # Run output inspections if needed
         if self._pii_inspector and self.config.pii_apply_to in ("output", "both"):
@@ -1001,6 +1055,13 @@ def guard(
     hitl_triggers: dict[str, set[str]] | None = None,
     hitl_timeout_seconds: float | None = None,
     hitl_default_on_timeout: bool = False,
+    retry: bool = False,
+    retry_max_attempts: int = 3,
+    retry_base_delay: float = 1.0,
+    retry_max_delay: float = 60.0,
+    retry_strategy: Literal["exponential", "linear", "constant", "fibonacci"] = "exponential",
+    retry_jitter: bool = True,
+    retry_on: tuple[type[Exception], ...] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -1066,6 +1127,13 @@ def guard(
     hitl_triggers: dict[str, set[str]] | None = None,
     hitl_timeout_seconds: float | None = None,
     hitl_default_on_timeout: bool = False,
+    retry: bool = False,
+    retry_max_attempts: int = 3,
+    retry_base_delay: float = 1.0,
+    retry_max_delay: float = 60.0,
+    retry_strategy: Literal["exponential", "linear", "constant", "fibonacci"] = "exponential",
+    retry_jitter: bool = True,
+    retry_on: tuple[type[Exception], ...] | None = None,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -1231,6 +1299,13 @@ def guard(
         hitl_triggers=hitl_triggers,
         hitl_timeout_seconds=hitl_timeout_seconds,
         hitl_default_on_timeout=hitl_default_on_timeout,
+        retry=retry,
+        retry_max_attempts=retry_max_attempts,
+        retry_base_delay=retry_base_delay,
+        retry_max_delay=retry_max_delay,
+        retry_strategy=retry_strategy,
+        retry_jitter=retry_jitter,
+        retry_on=retry_on,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

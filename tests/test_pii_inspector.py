@@ -8,14 +8,22 @@ Tests verify:
 - Luhn algorithm validation for credit cards
 - Confidence scoring
 - Custom pattern detection
+- Custom detector API (RegexDetector, FunctionDetector)
 - Integration with @guard decorator
 """
 
+import re
+
 from warden import (
+    DetectorMatch,
+    FunctionDetector,
     PIIInspector,
     PIIMatch,
     PIIType,
+    RegexDetector,
     check_pii,
+    create_function_detector,
+    create_regex_detector,
     inspect_pii,
     redact_pii,
 )
@@ -513,3 +521,368 @@ class TestEdgeCases:
         """Email with allowed special characters."""
         result = inspect_pii("user.name+tag@sub.example.com", strategy="monitor")
         assert result.has_pii
+
+
+# =============================================================================
+# CUSTOM DETECTOR API TESTS
+# =============================================================================
+
+
+class TestDetectorMatch:
+    """Test DetectorMatch dataclass."""
+
+    def test_detector_match_basic(self):
+        """Create basic DetectorMatch."""
+        match = DetectorMatch(
+            value="EMP-123456",
+            start=0,
+            end=10,
+            label="EMPLOYEE_ID",
+        )
+        assert match.value == "EMP-123456"
+        assert match.start == 0
+        assert match.end == 10
+        assert match.label == "EMPLOYEE_ID"
+        assert match.confidence == 1.0
+        assert match.metadata is None
+
+    def test_detector_match_with_metadata(self):
+        """DetectorMatch with metadata."""
+        match = DetectorMatch(
+            value="SECRET-XYZ",
+            start=5,
+            end=15,
+            label="API_KEY",
+            confidence=0.9,
+            metadata={"source": "header", "type": "bearer"},
+        )
+        assert match.confidence == 0.9
+        assert match.metadata["source"] == "header"
+
+
+class TestRegexDetector:
+    """Test RegexDetector class."""
+
+    def test_regex_detector_basic(self):
+        """Basic regex detection."""
+        detector = RegexDetector(r"EMP-\d{6}", label="EMPLOYEE_ID")
+        matches = detector.detect("Employee ID: EMP-123456")
+        assert len(matches) == 1
+        assert matches[0].value == "EMP-123456"
+        assert matches[0].label == "EMPLOYEE_ID"
+
+    def test_regex_detector_multiple_matches(self):
+        """Multiple regex matches."""
+        detector = RegexDetector(r"EMP-\d{6}", label="EMPLOYEE_ID")
+        text = "IDs: EMP-111111, EMP-222222, EMP-333333"
+        matches = detector.detect(text)
+        assert len(matches) == 3
+        assert matches[0].value == "EMP-111111"
+        assert matches[1].value == "EMP-222222"
+        assert matches[2].value == "EMP-333333"
+
+    def test_regex_detector_no_matches(self):
+        """No matches found."""
+        detector = RegexDetector(r"EMP-\d{6}", label="EMPLOYEE_ID")
+        matches = detector.detect("No employee IDs here")
+        assert len(matches) == 0
+
+    def test_regex_detector_with_compiled_pattern(self):
+        """Use pre-compiled pattern."""
+        pattern = re.compile(r"ORD-[A-Z]{3}-\d{4}", re.IGNORECASE)
+        detector = RegexDetector(pattern, label="ORDER_ID")
+        matches = detector.detect("Order: ORD-ABC-1234")
+        assert len(matches) == 1
+        assert matches[0].value == "ORD-ABC-1234"
+
+    def test_regex_detector_custom_confidence(self):
+        """Custom confidence score."""
+        detector = RegexDetector(r"\d{4}", label="PIN", confidence=0.7)
+        matches = detector.detect("PIN: 1234")
+        assert len(matches) == 1
+        assert matches[0].confidence == 0.7
+
+    def test_regex_detector_position_tracking(self):
+        """Verify start/end positions are correct."""
+        detector = RegexDetector(r"SECRET", label="SECRET")
+        text = "The SECRET is here"
+        matches = detector.detect(text)
+        assert len(matches) == 1
+        assert matches[0].start == 4
+        assert matches[0].end == 10
+        assert text[matches[0].start:matches[0].end] == "SECRET"
+
+
+class TestFunctionDetector:
+    """Test FunctionDetector class."""
+
+    def test_function_detector_basic(self):
+        """Basic function detection."""
+
+        def detect_aws_keys(text: str) -> list[DetectorMatch]:
+            matches = []
+            for m in re.finditer(r"AKIA[A-Z0-9]{16}", text):
+                matches.append(
+                    DetectorMatch(
+                        value=m.group(),
+                        start=m.start(),
+                        end=m.end(),
+                        label="AWS_KEY",
+                    )
+                )
+            return matches
+
+        detector = FunctionDetector(detect_aws_keys)
+        matches = detector.detect("Key: AKIAIOSFODNN7EXAMPLE")
+        assert len(matches) == 1
+        assert matches[0].label == "AWS_KEY"
+
+    def test_function_detector_applies_default_label(self):
+        """Default label applied when match has CUSTOM."""
+
+        def detect_secrets(text: str) -> list[DetectorMatch]:
+            if "password" in text.lower():
+                return [
+                    DetectorMatch(
+                        value="password",
+                        start=text.lower().find("password"),
+                        end=text.lower().find("password") + 8,
+                    )
+                ]
+            return []
+
+        detector = FunctionDetector(detect_secrets, label="PASSWORD")
+        matches = detector.detect("Your password is here")
+        assert len(matches) == 1
+        assert matches[0].label == "PASSWORD"
+
+    def test_function_detector_preserves_custom_label(self):
+        """Function's label preserved when not CUSTOM."""
+
+        def detect_with_label(text: str) -> list[DetectorMatch]:
+            return [
+                DetectorMatch(
+                    value="test",
+                    start=0,
+                    end=4,
+                    label="SPECIFIC_LABEL",
+                )
+            ]
+
+        detector = FunctionDetector(detect_with_label, label="DEFAULT")
+        matches = detector.detect("test")
+        assert matches[0].label == "SPECIFIC_LABEL"
+
+    def test_function_detector_complex_logic(self):
+        """Complex detection logic."""
+
+        def detect_credit_card_with_context(text: str) -> list[DetectorMatch]:
+            """Only detect CC if preceded by 'card:' or 'cc:'."""
+            matches = []
+            for m in re.finditer(r"(?:card:|cc:)\s*(\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4})", text.lower()):
+                matches.append(
+                    DetectorMatch(
+                        value=m.group(1),
+                        start=m.start(1),
+                        end=m.end(1),
+                        label="CONTEXTUAL_CC",
+                        confidence=0.95,
+                    )
+                )
+            return matches
+
+        detector = FunctionDetector(detect_credit_card_with_context)
+        # Should match - has context
+        matches = detector.detect("card: 1234 5678 9012 3456")
+        assert len(matches) == 1
+        # Should not match - no context
+        matches = detector.detect("1234 5678 9012 3456")
+        assert len(matches) == 0
+
+
+class TestCreateDetectorFunctions:
+    """Test factory functions for detectors."""
+
+    def test_create_regex_detector(self):
+        """Create detector with factory function."""
+        detector = create_regex_detector(
+            pattern=r"TICKET-\d+",
+            label="TICKET_ID",
+            confidence=0.85,
+        )
+        matches = detector.detect("See TICKET-12345")
+        assert len(matches) == 1
+        assert matches[0].label == "TICKET_ID"
+        assert matches[0].confidence == 0.85
+
+    def test_create_function_detector(self):
+        """Create function detector with factory."""
+
+        def detect_tokens(text: str) -> list[DetectorMatch]:
+            matches = []
+            for m in re.finditer(r"tok_[a-zA-Z0-9]{24}", text):
+                matches.append(
+                    DetectorMatch(
+                        value=m.group(),
+                        start=m.start(),
+                        end=m.end(),
+                    )
+                )
+            return matches
+
+        detector = create_function_detector(detect_tokens, label="STRIPE_TOKEN")
+        matches = detector.detect("Token: tok_1234567890abcdefghijklmn")
+        assert len(matches) == 1
+        assert matches[0].label == "STRIPE_TOKEN"
+
+
+class TestPIIInspectorWithCustomDetectors:
+    """Test PIIInspector integration with custom detectors."""
+
+    def test_inspector_with_regex_detector(self):
+        """PIIInspector uses RegexDetector."""
+        detector = RegexDetector(r"EMP-\d{6}", label="EMPLOYEE_ID")
+        inspector = PIIInspector(
+            strategy="redact",
+            custom_detectors=[detector],
+        )
+        result = inspector.inspect("Employee: EMP-123456")
+        assert result.has_pii
+        assert "[EMPLOYEE_ID REDACTED]" in result.sanitized_text
+        assert result.findings[0].custom_label == "EMPLOYEE_ID"
+
+    def test_inspector_with_function_detector(self):
+        """PIIInspector uses FunctionDetector."""
+
+        def detect_internal_ids(text: str) -> list[DetectorMatch]:
+            matches = []
+            for m in re.finditer(r"INT-[A-Z]{3}-\d{4}", text):
+                matches.append(
+                    DetectorMatch(
+                        value=m.group(),
+                        start=m.start(),
+                        end=m.end(),
+                        label="INTERNAL_ID",
+                    )
+                )
+            return matches
+
+        detector = FunctionDetector(detect_internal_ids)
+        inspector = PIIInspector(
+            strategy="redact",
+            custom_detectors=[detector],
+        )
+        result = inspector.inspect("Reference: INT-ABC-1234")
+        assert result.has_pii
+        assert "[INTERNAL_ID REDACTED]" in result.sanitized_text
+
+    def test_inspector_with_multiple_detectors(self):
+        """PIIInspector with multiple custom detectors."""
+        emp_detector = RegexDetector(r"EMP-\d{6}", label="EMPLOYEE_ID")
+        order_detector = RegexDetector(r"ORD-\d{8}", label="ORDER_ID")
+
+        inspector = PIIInspector(
+            strategy="redact",
+            custom_detectors=[emp_detector, order_detector],
+        )
+        result = inspector.inspect("Employee EMP-123456 placed order ORD-12345678")
+        assert result.has_pii
+        assert "[EMPLOYEE_ID REDACTED]" in result.sanitized_text
+        assert "[ORDER_ID REDACTED]" in result.sanitized_text
+
+    def test_inspector_custom_and_builtin_detectors(self):
+        """Custom detectors work alongside built-in detection."""
+        detector = RegexDetector(r"CUST-\d+", label="CUSTOMER_ID")
+        inspector = PIIInspector(
+            strategy="redact",
+            custom_detectors=[detector],
+        )
+        text = "Customer CUST-999 email: john@example.com"
+        result = inspector.inspect(text)
+        assert result.has_pii
+        assert "[CUSTOMER_ID REDACTED]" in result.sanitized_text
+        assert "[EMAIL REDACTED]" in result.sanitized_text
+
+    def test_inspector_custom_detector_block_strategy(self):
+        """Block strategy works with custom detectors."""
+        detector = RegexDetector(r"SECRET_[A-Z0-9]+", label="SECRET")
+        inspector = PIIInspector(
+            strategy="block",
+            custom_detectors=[detector],
+        )
+        result = inspector.inspect("Key: SECRET_ABC123")
+        assert result.verdict.blocked
+        assert "custom" in result.verdict.reason.lower()
+
+    def test_inspector_custom_detector_mask_strategy(self):
+        """Mask strategy works with custom detectors."""
+        detector = RegexDetector(r"ACC-\d{10}", label="ACCOUNT")
+        inspector = PIIInspector(
+            strategy="mask",
+            custom_detectors=[detector],
+        )
+        result = inspector.inspect("Account: ACC-1234567890")
+        assert not result.verdict.blocked
+        # Last 4 chars should be visible
+        assert "7890" in result.sanitized_text
+        assert "ACC-1234567890" not in result.sanitized_text
+
+    def test_inspector_custom_detector_hash_strategy(self):
+        """Hash strategy works with custom detectors."""
+        detector = RegexDetector(r"TOKEN_[A-Za-z0-9]+", label="TOKEN")
+        inspector = PIIInspector(
+            strategy="hash",
+            custom_detectors=[detector],
+        )
+        result = inspector.inspect("Auth: TOKEN_xyz123")
+        assert "[HASH:" in result.sanitized_text
+        assert "TOKEN_xyz123" not in result.sanitized_text
+
+    def test_custom_detector_error_handling(self):
+        """Detector errors don't break inspection."""
+
+        def buggy_detector(text: str) -> list[DetectorMatch]:
+            raise ValueError("Detector failed!")
+
+        detector = FunctionDetector(buggy_detector)
+        inspector = PIIInspector(
+            strategy="monitor",
+            custom_detectors=[detector],
+        )
+        # Should not raise, just skip the buggy detector
+        result = inspector.inspect("john@example.com")
+        assert result.has_pii  # Built-in email detection still works
+
+    def test_custom_detector_with_confidence_filter(self):
+        """Low confidence matches filtered by min_confidence."""
+        detector = RegexDetector(r"\d{4}", label="MAYBE_PIN", confidence=0.5)
+        inspector = PIIInspector(
+            strategy="redact",
+            min_confidence=0.8,
+            custom_detectors=[detector],
+            detect_types=[],  # Disable built-in types
+        )
+        result = inspector.inspect("Code: 1234")
+        # Should be filtered out due to low confidence
+        assert not result.has_pii
+
+    def test_pii_match_label_property(self):
+        """PIIMatch.label uses custom_label when available."""
+        match = PIIMatch(
+            pii_type=PIIType.CUSTOM,
+            value="EMP-123",
+            start=0,
+            end=7,
+            custom_label="employee_id",
+        )
+        assert match.label == "EMPLOYEE_ID"
+
+    def test_pii_match_label_fallback(self):
+        """PIIMatch.label falls back to pii_type when no custom_label."""
+        match = PIIMatch(
+            pii_type=PIIType.EMAIL,
+            value="test@example.com",
+            start=0,
+            end=16,
+        )
+        assert match.label == "EMAIL"

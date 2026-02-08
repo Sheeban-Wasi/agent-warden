@@ -1220,3 +1220,133 @@ class TestHITLGuardIntegration:
         # rm requires approval and is denied
         with pytest.raises(PolicyViolation):
             run_command("rm -rf /tmp/test")
+
+
+class TestRetryIntegration:
+    """Test retry integration with @guard decorator."""
+
+    def test_retry_success_on_first_attempt(self):
+        """Function that succeeds should not retry."""
+
+        @guard(
+            sql=False,
+            retry=True,
+            retry_max_attempts=3,
+            audit=False,
+        )
+        def simple_operation(x: str) -> str:
+            return f"result: {x}"
+
+        result = simple_operation("test")
+        assert result == "result: test"
+
+    def test_retry_recovers_from_failure(self):
+        """Function that fails then succeeds should recover."""
+        attempts = 0
+
+        @guard(
+            sql=False,
+            retry=True,
+            retry_max_attempts=3,
+            retry_base_delay=0.01,
+            retry_jitter=False,
+            audit=False,
+        )
+        def flaky_operation(x: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 2:
+                raise ConnectionError("Transient failure")
+            return f"recovered: {x}"
+
+        result = flaky_operation("test")
+        assert result == "recovered: test"
+        assert attempts == 2
+
+    def test_retry_exhausted_raises(self):
+        """Function that always fails should exhaust retries and raise."""
+
+        @guard(
+            sql=False,
+            retry=True,
+            retry_max_attempts=2,
+            retry_base_delay=0.01,
+            retry_jitter=False,
+            audit=False,
+        )
+        def always_fails(x: str) -> str:
+            raise ValueError("Always fails")
+
+        with pytest.raises(ValueError, match="Always fails"):
+            always_fails("test")
+
+    def test_retry_specific_exceptions(self):
+        """Retry should only apply to specified exceptions."""
+        attempts = 0
+
+        @guard(
+            sql=False,
+            retry=True,
+            retry_max_attempts=3,
+            retry_base_delay=0.01,
+            retry_on=(ConnectionError,),  # Only retry ConnectionError
+            audit=False,
+        )
+        def raises_value_error(x: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            raise ValueError("Not retryable")
+
+        with pytest.raises(ValueError):
+            raises_value_error("test")
+
+        # Should only have attempted once
+        assert attempts == 1
+
+    def test_retry_combined_with_sql_guard(self):
+        """Retry should work together with SQL guard."""
+        attempts = 0
+
+        @guard(
+            sql=True,
+            mode="monitor",
+            retry=True,
+            retry_max_attempts=3,
+            retry_base_delay=0.01,
+            retry_jitter=False,
+            audit=False,
+        )
+        def query_with_retry(sql: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 2:
+                raise ConnectionError("Database connection failed")
+            return f"executed: {sql}"
+
+        result = query_with_retry("SELECT * FROM users")
+        assert result == "executed: SELECT * FROM users"
+        assert attempts == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_async_function(self):
+        """Retry should work with async functions."""
+        attempts = 0
+
+        @guard(
+            sql=False,
+            retry=True,
+            retry_max_attempts=3,
+            retry_base_delay=0.01,
+            retry_jitter=False,
+            audit=False,
+        )
+        async def async_flaky(x: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 2:
+                raise ConnectionError("Async failure")
+            return f"async recovered: {x}"
+
+        result = await async_flaky("test")
+        assert result == "async recovered: test"
+        assert attempts == 2

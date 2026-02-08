@@ -27,6 +27,16 @@ from warden.core.rate_limiter import (
     get_rate_limiter,
     reset_rate_limits,
 )
+from warden.core.retry import (
+    RetryAttempt,
+    RetryConfig,
+    RetryHandler,
+    RetryOutcome,
+    RetryResult,
+    RetryStrategy,
+    create_retry_handler,
+    with_retry,
+)
 from warden.core.verdict import Verdict, VerdictType, create_block_verdict, create_pass_verdict
 
 __all__ = [
@@ -56,4 +66,13 @@ __all__ = [
     "create_cli_approval_callback",
     "create_auto_deny_callback",
     "create_auto_approve_callback",
+    # Retry
+    "RetryHandler",
+    "RetryConfig",
+    "RetryStrategy",
+    "RetryAttempt",
+    "RetryResult",
+    "RetryOutcome",
+    "with_retry",
+    "create_retry_handler",
 ]

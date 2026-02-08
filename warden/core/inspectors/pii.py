@@ -24,11 +24,198 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from warden.core.verdict import Verdict, create_block_verdict, create_pass_verdict
+
+
+# =============================================================================
+# CUSTOM DETECTOR PROTOCOL
+# =============================================================================
+
+
+@dataclass
+class DetectorMatch:
+    """A match returned by a custom detector."""
+
+    value: str
+    start: int
+    end: int
+    label: str = "CUSTOM"  # Custom label for this PII type
+    confidence: float = 1.0
+    metadata: dict | None = None
+
+
+@runtime_checkable
+class CustomDetector(Protocol):
+    """
+    Protocol for custom PII detectors.
+
+    Implement this to create sophisticated detection logic beyond regex.
+
+    Example:
+        class EmployeeIDDetector:
+            '''Detect internal employee IDs.'''
+
+            def detect(self, text: str) -> list[DetectorMatch]:
+                matches = []
+                # Custom logic to find employee IDs
+                for match in re.finditer(r'EMP-\\d{6}', text):
+                    matches.append(DetectorMatch(
+                        value=match.group(),
+                        start=match.start(),
+                        end=match.end(),
+                        label="EMPLOYEE_ID",
+                    ))
+                return matches
+
+        inspector = PIIInspector(
+            custom_detectors=[EmployeeIDDetector()],
+        )
+    """
+
+    def detect(self, text: str) -> list[DetectorMatch]:
+        """
+        Detect PII in the given text.
+
+        Args:
+            text: The text to scan.
+
+        Returns:
+            List of DetectorMatch objects for each PII found.
+        """
+        ...
+
+
+class RegexDetector:
+    """
+    Simple regex-based custom detector.
+
+    Example:
+        detector = RegexDetector(
+            pattern=r'\\b[A-Z]{2}\\d{6}\\b',
+            label="ACCOUNT_NUMBER",
+        )
+    """
+
+    def __init__(
+        self,
+        pattern: str | re.Pattern,
+        label: str = "CUSTOM",
+        confidence: float = 1.0,
+    ) -> None:
+        """
+        Initialize regex detector.
+
+        Args:
+            pattern: Regex pattern to match.
+            label: Label for this PII type (e.g., "ACCOUNT_NUMBER").
+            confidence: Confidence score for matches.
+        """
+        self.pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
+        self.label = label
+        self.confidence = confidence
+
+    def detect(self, text: str) -> list[DetectorMatch]:
+        """Detect matches using regex."""
+        matches = []
+        for match in self.pattern.finditer(text):
+            matches.append(
+                DetectorMatch(
+                    value=match.group(),
+                    start=match.start(),
+                    end=match.end(),
+                    label=self.label,
+                    confidence=self.confidence,
+                )
+            )
+        return matches
+
+
+class FunctionDetector:
+    """
+    Detector that wraps a function.
+
+    Example:
+        def detect_passwords(text: str) -> list[DetectorMatch]:
+            # Custom logic
+            matches = []
+            if 'password=' in text.lower():
+                # Find password values
+                ...
+            return matches
+
+        detector = FunctionDetector(detect_passwords, label="PASSWORD")
+    """
+
+    def __init__(
+        self,
+        func: Callable[[str], list[DetectorMatch]],
+        label: str = "CUSTOM",
+    ) -> None:
+        """
+        Initialize function detector.
+
+        Args:
+            func: Detection function.
+            label: Default label if matches don't specify one.
+        """
+        self.func = func
+        self.label = label
+
+    def detect(self, text: str) -> list[DetectorMatch]:
+        """Detect matches using the wrapped function."""
+        matches = self.func(text)
+        # Apply default label if not set
+        for match in matches:
+            if match.label == "CUSTOM" and self.label != "CUSTOM":
+                match.label = self.label
+        return matches
+
+
+def create_regex_detector(
+    pattern: str,
+    label: str = "CUSTOM",
+    confidence: float = 1.0,
+) -> RegexDetector:
+    """
+    Create a regex-based detector.
+
+    Args:
+        pattern: Regex pattern string.
+        label: Label for this PII type.
+        confidence: Confidence score for matches.
+
+    Returns:
+        RegexDetector instance.
+    """
+    return RegexDetector(pattern=pattern, label=label, confidence=confidence)
+
+
+def create_function_detector(
+    func: Callable[[str], list[DetectorMatch]],
+    label: str = "CUSTOM",
+) -> FunctionDetector:
+    """
+    Create a function-based detector.
+
+    Args:
+        func: Detection function that returns DetectorMatch list.
+        label: Default label for matches.
+
+    Returns:
+        FunctionDetector instance.
+    """
+    return FunctionDetector(func=func, label=label)
+
+
+# =============================================================================
+# PII TYPES
+# =============================================================================
 
 
 class PIIType(Enum):
@@ -65,11 +252,19 @@ class PIIMatch:
     start: int
     end: int
     confidence: float = 1.0
+    custom_label: str | None = None  # For custom detectors
+
+    @property
+    def label(self) -> str:
+        """Get the display label for this match."""
+        if self.custom_label:
+            return self.custom_label.upper()
+        return self.pii_type.value.upper()
 
     @property
     def redacted(self) -> str:
         """Get redacted version."""
-        return f"[{self.pii_type.value.upper()} REDACTED]"
+        return f"[{self.label} REDACTED]"
 
     @property
     def masked(self) -> str:
@@ -200,6 +395,7 @@ class PIIInspectorConfig:
         )
     )
     custom_patterns: dict[str, re.Pattern] = field(default_factory=dict)
+    custom_detectors: list[CustomDetector] = field(default_factory=list)
     min_confidence: float = 0.8
     hash_salt: str = ""  # Optional salt for hashing
 
@@ -214,7 +410,8 @@ class PIIInspector:
     Args:
         strategy: How to handle detected PII (default: block)
         detect_types: Which PII types to detect (default: all common types)
-        custom_patterns: Additional regex patterns to detect
+        custom_patterns: Additional regex patterns to detect (legacy API)
+        custom_detectors: List of CustomDetector instances for advanced detection
         hash_salt: Optional salt for deterministic hashing
 
     Example:
@@ -228,6 +425,14 @@ class PIIInspector:
         inspector = PIIInspector(strategy="redact")
         result = inspector.inspect("Email: john@example.com")
         print(result.sanitized_text)  # "Email: [EMAIL REDACTED]"
+
+        # With custom detectors
+        inspector = PIIInspector(
+            strategy="redact",
+            custom_detectors=[
+                RegexDetector(r'EMP-\\d{6}', label="EMPLOYEE_ID"),
+            ],
+        )
     """
 
     INSPECTOR_NAME = "pii_inspector"
@@ -237,6 +442,7 @@ class PIIInspector:
         strategy: PIIStrategy | str = PIIStrategy.BLOCK,
         detect_types: set[PIIType] | frozenset[PIIType] | list[str] | None = None,
         custom_patterns: dict[str, str | re.Pattern] | None = None,
+        custom_detectors: list[CustomDetector] | None = None,
         hash_salt: str = "",
         min_confidence: float = 0.8,
     ) -> None:
@@ -261,7 +467,7 @@ class PIIInspector:
             # List of strings
             detect_set = frozenset(PIIType(t) for t in detect_types)
 
-        # Compile custom patterns
+        # Compile custom patterns (legacy API)
         compiled_patterns: dict[str, re.Pattern] = {}
         if custom_patterns:
             for name, pattern in custom_patterns.items():
@@ -270,10 +476,14 @@ class PIIInspector:
                 else:
                     compiled_patterns[name] = pattern
 
+        # Store custom detectors
+        detectors = list(custom_detectors) if custom_detectors else []
+
         self.config = PIIInspectorConfig(
             strategy=strategy,
             detect_types=detect_set,
             custom_patterns=compiled_patterns,
+            custom_detectors=detectors,
             min_confidence=min_confidence,
             hash_salt=hash_salt,
         )
@@ -348,7 +558,7 @@ class PIIInspector:
                             )
                         )
 
-        # Check custom patterns
+        # Check custom patterns (legacy API)
         for _name, pattern in self.config.custom_patterns.items():
             for match in pattern.finditer(text):
                 findings.append(
@@ -360,6 +570,25 @@ class PIIInspector:
                         confidence=1.0,
                     )
                 )
+
+        # Check custom detectors (new API)
+        for detector in self.config.custom_detectors:
+            try:
+                detector_matches = detector.detect(text)
+                for dm in detector_matches:
+                    findings.append(
+                        PIIMatch(
+                            pii_type=PIIType.CUSTOM,
+                            value=dm.value,
+                            start=dm.start,
+                            end=dm.end,
+                            confidence=dm.confidence,
+                            custom_label=dm.label,
+                        )
+                    )
+            except Exception:
+                # Don't let detector errors break inspection
+                pass
 
         # Filter by confidence
         findings = [f for f in findings if f.confidence >= self.config.min_confidence]
@@ -573,3 +802,27 @@ def redact_pii(
     inspector = PIIInspector(strategy="redact", detect_types=detect_types)
     result = inspector.inspect(text)
     return result.sanitized_text
+
+
+__all__ = [
+    # Types
+    "PIIType",
+    "PIIStrategy",
+    # Data classes
+    "PIIMatch",
+    "PIIResult",
+    "PIIInspectorConfig",
+    # Custom detector API
+    "CustomDetector",
+    "DetectorMatch",
+    "RegexDetector",
+    "FunctionDetector",
+    "create_regex_detector",
+    "create_function_detector",
+    # Inspector
+    "PIIInspector",
+    # Convenience functions
+    "check_pii",
+    "inspect_pii",
+    "redact_pii",
+]

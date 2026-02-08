@@ -6,13 +6,15 @@ Last updated: 2026-02-07
 
 ### Core Inspectors
 - [x] **SQL Inspector** - AST-based SQL injection protection with sqlglot
-- [x] **PII Inspector** - 5 strategies (block, redact, mask, hash, monitor), Luhn validation
+- [x] **PII Inspector** - 5 strategies (block, redact, mask, hash, monitor), Luhn validation, custom detectors
 - [x] **File Inspector** - Path traversal, sensitive files, cloud metadata protection
 - [x] **Shell Inspector** - Dangerous commands, injection, reverse shells, privilege escalation
 - [x] **RAG Inspector** - Document access control, ABAC, classification, tenant isolation
 - [x] **API Inspector** - SSRF protection, domain control, data exfiltration prevention
+- [x] **Identity Inspector** - RBAC/ABAC, agent/tenant allowlists, scope/role/permission enforcement
 - [x] **Rate Limiter** - Sliding window counter, per-tool/global limits, @guard integration
 - [x] **HITL Guard** - Human-in-the-Loop approval for high-risk actions, async callbacks
+- [x] **Tool Retry** - Exponential/linear/constant/fibonacci backoff, jitter, @guard integration
 
 ### Infrastructure
 - [x] **Verdict System** - Universal result type for all inspectors
@@ -20,9 +22,10 @@ Last updated: 2026-02-07
 - [x] **Audit Logger** - Structured JSON logging for compliance (SOC2, HIPAA, GDPR)
 - [x] **@guard Decorator** - AWS Strands integration with all inspectors
 - [x] **Exception Hierarchy** - WardenError, PolicyViolation, CriticalViolation, etc.
+- [x] **Custom PII Detectors** - Protocol-based detectors (RegexDetector, FunctionDetector)
 
 ### Testing & Documentation
-- [x] 594 tests passing
+- [x] 700 tests passing
 - [x] 10 example files demonstrating all features
 - [x] README with full documentation
 - [x] CLAUDE.md with code style rules
@@ -38,20 +41,6 @@ Last updated: 2026-02-07
 **Description:** Thin adapter for LangChain integration.
 **Location:** `warden/integrations/langchain.py`
 
-### Medium Priority
-
-#### 2. Tool Retry with Backoff
-**Status:** Not started
-**Description:** Automatic retry with exponential backoff for transient failures.
-
-#### 3. Context/Identity Inspector
-**Status:** Not started
-**Description:** Identity-centric access control beyond what RAG Inspector provides.
-
-#### 4. Improve PII Custom Detector API
-**Status:** Not started
-**Description:** Match LangChain's detector signature for easier migration.
-
 ---
 
 ## Architecture Overview
@@ -61,16 +50,18 @@ warden/
 ├── core/                      # Platform-agnostic (ZERO external deps except sqlglot)
 │   ├── inspectors/
 │   │   ├── sql.py            # SQL injection protection
-│   │   ├── pii.py            # PII detection & handling
+│   │   ├── pii.py            # PII detection & handling + custom detectors
 │   │   ├── file.py           # File access control
 │   │   ├── shell.py          # Shell command security
 │   │   ├── rag.py            # RAG document access control
-│   │   └── api.py            # API call security (SSRF, exfiltration)
+│   │   ├── api.py            # API call security (SSRF, exfiltration)
+│   │   └── identity.py       # Identity-based access control (RBAC/ABAC)
 │   ├── verdict.py            # Universal result type
 │   ├── policy.py             # YAML policy engine
 │   ├── audit.py              # Compliance logging
 │   ├── rate_limiter.py       # Sliding window rate limiting
-│   └── hitl.py               # Human-in-the-Loop approval
+│   ├── hitl.py               # Human-in-the-Loop approval
+│   └── retry.py              # Tool retry with backoff
 │
 ├── integrations/              # Thin adapters (~100 lines max)
 │   └── strands.py            # AWS Strands @guard decorator
@@ -101,8 +92,10 @@ Every inspector follows this pattern:
 | Shell | INPUT | Command before execution |
 | RAG | OUTPUT | Documents before passing to LLM |
 | API | INPUT | Request before HTTP call |
+| Identity | INPUT | Agent/user identity and permissions |
 | Rate Limit | INPUT | Call count before execution |
 | HITL | INPUT | High-risk actions before execution |
+| Retry | WRAPPER | Transient failures with backoff |
 
 ---
 
@@ -122,6 +115,18 @@ python -m pytest tests/ --cov=warden --cov-report=term-missing
 ---
 
 ## Recent Changes
+
+### 2026-02-07 (Continued)
+- Implemented Tool Retry with exponential/linear/constant/fibonacci backoff
+- RetryHandler with jitter, configurable retry conditions, async support
+- Integrated retry into @guard decorator (retry=True, retry_* parameters)
+- 30 new retry tests + 6 integration tests
+- Implemented Identity Inspector with RBAC/ABAC support
+- Agent/tenant allowlists, scope/role/permission enforcement
+- 45 new identity inspector tests
+- Enhanced PII Inspector with custom detector API
+- Added CustomDetector protocol, RegexDetector, FunctionDetector classes
+- 25 new custom detector tests (700 total tests)
 
 ### 2026-02-07
 - Added API Inspector with SSRF protection, domain control, data exfiltration prevention

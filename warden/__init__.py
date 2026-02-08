@@ -50,12 +50,18 @@ from warden.core.inspectors.file import (
     inspect_file,
 )
 from warden.core.inspectors.pii import (
+    CustomDetector,
+    DetectorMatch,
+    FunctionDetector,
     PIIInspector,
     PIIMatch,
     PIIResult,
     PIIStrategy,
     PIIType,
+    RegexDetector,
     check_pii,
+    create_function_detector,
+    create_regex_detector,
     inspect_pii,
     redact_pii,
 )
@@ -79,6 +85,17 @@ from warden.core.inspectors.shell import (
     ShellViolationType,
     check_shell,
     inspect_shell,
+)
+from warden.core.inspectors.identity import (
+    IdentityContext,
+    IdentityInspector,
+    IdentityMatch,
+    IdentityMode,
+    IdentityResult,
+    IdentityViolationType,
+    check_identity,
+    create_identity_context,
+    inspect_identity,
 )
 from warden.core.inspectors.sql import (
     SQLInspector,
@@ -112,6 +129,16 @@ from warden.core.rate_limiter import (
     clear_all_rate_limiters,
     get_rate_limiter,
     reset_rate_limits,
+)
+from warden.core.retry import (
+    RetryAttempt,
+    RetryConfig,
+    RetryHandler,
+    RetryOutcome,
+    RetryResult,
+    RetryStrategy,
+    create_retry_handler,
+    with_retry,
 )
 from warden.core.verdict import (
     Verdict,
@@ -166,6 +193,13 @@ __all__ = [
     "check_pii",
     "inspect_pii",
     "redact_pii",
+    # PII Custom Detectors
+    "CustomDetector",
+    "DetectorMatch",
+    "RegexDetector",
+    "FunctionDetector",
+    "create_regex_detector",
+    "create_function_detector",
     # File Inspector
     "FileInspector",
     "FileMode",
@@ -182,6 +216,16 @@ __all__ = [
     "ShellResult",
     "check_shell",
     "inspect_shell",
+    # Identity Inspector
+    "IdentityInspector",
+    "IdentityMode",
+    "IdentityViolationType",
+    "IdentityContext",
+    "IdentityMatch",
+    "IdentityResult",
+    "check_identity",
+    "inspect_identity",
+    "create_identity_context",
     # RAG Inspector
     "RAGInspector",
     "RAGMode",
@@ -236,4 +280,13 @@ __all__ = [
     "create_cli_approval_callback",
     "create_auto_deny_callback",
     "create_auto_approve_callback",
+    # Retry
+    "RetryHandler",
+    "RetryConfig",
+    "RetryStrategy",
+    "RetryAttempt",
+    "RetryResult",
+    "RetryOutcome",
+    "with_retry",
+    "create_retry_handler",
 ]

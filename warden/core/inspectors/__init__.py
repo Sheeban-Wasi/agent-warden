@@ -8,6 +8,7 @@ Each inspector focuses on one type of threat:
 - ShellInspector: Shell command security (dangerous commands, injection)
 - RAGInspector: RAG document security (ABAC, content filtering)
 - APIInspector: API call security (SSRF, data exfiltration)
+- IdentityInspector: Identity-based access control (RBAC, ABAC)
 """
 
 from warden.core.inspectors.api import (
@@ -30,12 +31,18 @@ from warden.core.inspectors.file import (
     inspect_file,
 )
 from warden.core.inspectors.pii import (
+    CustomDetector,
+    DetectorMatch,
+    FunctionDetector,
     PIIInspector,
     PIIMatch,
     PIIResult,
     PIIStrategy,
     PIIType,
+    RegexDetector,
     check_pii,
+    create_function_detector,
+    create_regex_detector,
     inspect_pii,
     redact_pii,
 )
@@ -59,6 +66,17 @@ from warden.core.inspectors.shell import (
     ShellViolationType,
     check_shell,
     inspect_shell,
+)
+from warden.core.inspectors.identity import (
+    IdentityContext,
+    IdentityInspector,
+    IdentityMatch,
+    IdentityMode,
+    IdentityResult,
+    IdentityViolationType,
+    check_identity,
+    create_identity_context,
+    inspect_identity,
 )
 from warden.core.inspectors.sql import SQLInspector, SQLMode, check_sql, inspect_sql
 
@@ -86,6 +104,13 @@ __all__ = [
     "check_pii",
     "inspect_pii",
     "redact_pii",
+    # PII Custom Detectors
+    "CustomDetector",
+    "DetectorMatch",
+    "RegexDetector",
+    "FunctionDetector",
+    "create_regex_detector",
+    "create_function_detector",
     # File Inspector
     "FileInspector",
     "FileMode",
@@ -113,4 +138,14 @@ __all__ = [
     "check_rag_documents",
     "inspect_rag_documents",
     "filter_rag_documents",
+    # Identity Inspector
+    "IdentityInspector",
+    "IdentityMode",
+    "IdentityViolationType",
+    "IdentityContext",
+    "IdentityMatch",
+    "IdentityResult",
+    "check_identity",
+    "inspect_identity",
+    "create_identity_context",
 ]
