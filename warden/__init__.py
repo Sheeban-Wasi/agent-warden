@@ -93,6 +93,17 @@ from warden.core.policy import (
     RateLimits,
     SQLPolicy,
 )
+from warden.core.hitl import (
+    ApprovalRequest,
+    ApprovalResult,
+    ApprovalStatus,
+    HITLGuard,
+    RiskLevel,
+    approval_required,
+    create_auto_approve_callback,
+    create_auto_deny_callback,
+    create_cli_approval_callback,
+)
 from warden.core.rate_limiter import (
     RateLimiter,
     RateLimitMode,
@@ -215,4 +226,14 @@ __all__ = [
     "get_rate_limiter",
     "reset_rate_limits",
     "clear_all_rate_limiters",
+    # HITL
+    "HITLGuard",
+    "ApprovalRequest",
+    "ApprovalResult",
+    "ApprovalStatus",
+    "RiskLevel",
+    "approval_required",
+    "create_cli_approval_callback",
+    "create_auto_deny_callback",
+    "create_auto_approve_callback",
 ]

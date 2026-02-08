@@ -6,7 +6,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://img.shields.io/badge/tests-563%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-594%20passing-brightgreen.svg)]()
 [![AWS Strands](https://img.shields.io/badge/AWS%20Strands-Native%20Integration-FF9900?logo=amazon-aws)](https://github.com/strands-agents/strands-agents)
 
 ---
@@ -22,6 +22,7 @@ Protect your AI agents from SQL injection, PII leakage, file system attacks, and
 | **RAG Inspector** | Document access control, classification, tenant isolation, content security | ✅ Production |
 | **API Inspector** | SSRF protection, domain control, data exfiltration prevention | ✅ Production |
 | **Rate Limiter** | Throttle agent calls, prevent runaway loops, cost control | ✅ Production |
+| **HITL Guard** | Human-in-the-Loop approval for high-risk actions | ✅ Production |
 | **Policy Engine** | YAML-based multi-agent configuration | ✅ Production |
 | **Audit Logger** | Structured JSON logging for compliance (SOC2, HIPAA, GDPR) | ✅ Production |
 
@@ -343,6 +344,57 @@ def call_api(url: str) -> dict:
 
 ---
 
+### 8. Human-in-the-Loop (HITL) Guard
+
+Require human approval for high-risk actions before execution.
+
+```python
+from warden import HITLGuard, ApprovalRequest, guard
+
+# CLI approval callback
+def approval_callback(request: ApprovalRequest) -> bool:
+    print(f"\n⚠️  Action: {request.action}")
+    print(f"   Type: {request.action_type}")
+    print(f"   Risk: {request.risk_level.value}")
+    return input("Approve? (y/n): ").lower() == "y"
+
+# Standalone usage
+guard = HITLGuard(callback=approval_callback)
+
+if guard.requires_approval("DELETE FROM users", "sql"):
+    result = guard.request_approval(
+        action="DELETE FROM users",
+        action_type="sql_delete",
+        tool_name="database_query",
+    )
+    if not result.approved:
+        raise PermissionError("Action denied by human")
+
+# With @guard decorator
+@guard(
+    sql=True,
+    mode="safe-write",
+    hitl=True,
+    hitl_callback=approval_callback,
+)
+def execute_sql(query: str) -> dict:
+    return db.execute(query)  # DELETE/DROP will pause for approval
+```
+
+**Default triggers (customizable):**
+- SQL: `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, `GRANT`, `REVOKE`
+- Shell: `rm`, `sudo`, `chmod`, `chown`, `kill`, `shutdown`
+- File: `delete`, `remove`, `unlink`
+
+**Features:**
+- Sync and async callback support
+- Customizable trigger patterns per action type
+- Risk level classification (LOW, MEDIUM, HIGH, CRITICAL)
+- Timeout with configurable default (approve/deny)
+- Audit logging integration
+
+---
+
 ## Multi-Agent Policy Engine
 
 Define different security rules for each agent using YAML:
@@ -463,7 +515,9 @@ warden/
 │   │   └── api.py            # API call security (SSRF, exfiltration)
 │   ├── verdict.py            # Universal result type
 │   ├── policy.py             # YAML policy engine
-│   └── audit.py              # Compliance logging
+│   ├── audit.py              # Compliance logging
+│   ├── rate_limiter.py       # Sliding window rate limiting
+│   └── hitl.py               # Human-in-the-Loop approval
 │
 └── integrations/              # Thin adapters
     └── strands.py            # AWS Strands @guard decorator
@@ -479,9 +533,12 @@ warden/
 - [x] Shell Inspector (command injection, reverse shells)
 - [x] RAG Inspector (document access control, ABAC)
 - [x] API Call Guard (SSRF, exfiltration prevention)
+- [x] Rate Limiter (sliding window)
+- [x] Human-in-the-Loop Guard (approval workflow)
 - [x] Policy Engine (YAML-based)
 - [x] Audit Logger (compliance)
 - [ ] LangChain/CrewAI/AutoGen adapters
+- [ ] Tool Retry with exponential backoff
 
 ---
 

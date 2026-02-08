@@ -52,6 +52,7 @@ from enum import Enum
 from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from warden.core.audit import AuditLevel, AuditLogger, LogDestination
+from warden.core.hitl import ApprovalCallback, ApprovalRequest, HITLGuard, RiskLevel
 from warden.core.inspectors.api import APIInspector
 from warden.core.rate_limiter import RateLimiter
 from warden.core.inspectors.file import FileInspector
@@ -164,6 +165,13 @@ class GuardConfig:
     rate_limit_window_seconds: float = 60.0
     rate_limit_key: Literal["tool", "global"] = "tool"  # Rate limit per tool or globally
 
+    # Human-in-the-Loop settings
+    hitl: bool = False
+    hitl_callback: ApprovalCallback | None = None
+    hitl_triggers: dict[str, set[str]] | None = None  # Custom triggers per action type
+    hitl_timeout_seconds: float | None = None
+    hitl_default_on_timeout: bool = False  # Deny on timeout (safe default)
+
     # Block handling
     on_block: Literal["raise", "return_error", "return_none"] = "raise"
     error_message: str = "Operation blocked by security policy: {reason}"
@@ -257,6 +265,11 @@ class ToolGuard:
         rate_limit_max_calls: int = 100,
         rate_limit_window_seconds: float = 60.0,
         rate_limit_key: Literal["tool", "global"] = "tool",
+        hitl: bool = False,
+        hitl_callback: ApprovalCallback | None = None,
+        hitl_triggers: dict[str, set[str]] | None = None,
+        hitl_timeout_seconds: float | None = None,
+        hitl_default_on_timeout: bool = False,
         on_block: Literal["raise", "return_error", "return_none"] = "raise",
         error_message: str = "Operation blocked by security policy: {reason}",
         audit: bool = True,
@@ -313,6 +326,11 @@ class ToolGuard:
             rate_limit_max_calls=rate_limit_max_calls,
             rate_limit_window_seconds=rate_limit_window_seconds,
             rate_limit_key=rate_limit_key,
+            hitl=hitl,
+            hitl_callback=hitl_callback,
+            hitl_triggers=hitl_triggers,
+            hitl_timeout_seconds=hitl_timeout_seconds,
+            hitl_default_on_timeout=hitl_default_on_timeout,
             on_block=on_block,
             error_message=error_message,
             audit=audit,
@@ -402,6 +420,16 @@ class ToolGuard:
             self._rate_limiter = RateLimiter(
                 max_calls=rate_limit_max_calls,
                 window_seconds=rate_limit_window_seconds,
+            )
+
+        # Initialize HITL guard if needed
+        self._hitl_guard: HITLGuard | None = None
+        if hitl and hitl_callback:
+            self._hitl_guard = HITLGuard(
+                callback=hitl_callback,
+                trigger_patterns=hitl_triggers,
+                timeout_seconds=hitl_timeout_seconds,
+                default_on_timeout=hitl_default_on_timeout,
             )
 
         # Initialize audit logger if needed
@@ -604,6 +632,57 @@ class ToolGuard:
 
         verdict: Verdict | None = None
         sanitized_value: str | None = value
+
+        # HITL check - request human approval for high-risk actions
+        if self._hitl_guard and self.config.hitl:
+            # Determine action type based on which inspectors are enabled
+            action_type = "unknown"
+            if self.config.sql:
+                action_type = "sql"
+            elif self.config.shell:
+                action_type = "shell"
+            elif self.config.file_access:
+                action_type = "file"
+
+            # Check if this action requires approval
+            if self._hitl_guard.requires_approval(value, action_type):
+                approval_result = self._hitl_guard.request_approval(
+                    action=value,
+                    action_type=action_type,
+                    tool_name=func_name,
+                    context={"audit_context": self.config.audit_context},
+                )
+
+                if self._audit_logger:
+                    from warden.core.verdict import create_block_verdict, create_pass_verdict
+
+                    if approval_result.approved:
+                        log_verdict = create_pass_verdict(inspector="hitl")
+                    else:
+                        log_verdict = create_block_verdict(
+                            reason=f"Action denied by human: {approval_result.reason or 'No reason given'}",
+                            rule="hitl_denied",
+                            inspector="hitl",
+                        )
+                    context = {
+                        "tool": func_name,
+                        "inspector": "hitl",
+                        "action_type": action_type,
+                        "approval_status": approval_result.status.value,
+                        "response_time": approval_result.response_time_seconds,
+                        **self.config.audit_context,
+                    }
+                    self._audit_logger.log(log_verdict, context=context)
+
+                if not approval_result.approved:
+                    from warden.core.verdict import create_block_verdict
+
+                    verdict = create_block_verdict(
+                        reason=f"Action requires human approval and was denied: {approval_result.reason or approval_result.status.value}",
+                        rule="hitl_denied",
+                        inspector="hitl",
+                    )
+                    return verdict, None
 
         # SQL inspection
         if self._sql_inspector and self.config.sql:
@@ -917,6 +996,11 @@ def guard(
     rate_limit_max_calls: int = 100,
     rate_limit_window_seconds: float = 60.0,
     rate_limit_key: Literal["tool", "global"] = "tool",
+    hitl: bool = False,
+    hitl_callback: ApprovalCallback | None = None,
+    hitl_triggers: dict[str, set[str]] | None = None,
+    hitl_timeout_seconds: float | None = None,
+    hitl_default_on_timeout: bool = False,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -977,6 +1061,11 @@ def guard(
     rate_limit_max_calls: int = 100,
     rate_limit_window_seconds: float = 60.0,
     rate_limit_key: Literal["tool", "global"] = "tool",
+    hitl: bool = False,
+    hitl_callback: ApprovalCallback | None = None,
+    hitl_triggers: dict[str, set[str]] | None = None,
+    hitl_timeout_seconds: float | None = None,
+    hitl_default_on_timeout: bool = False,
     on_block: Literal["raise", "return_error", "return_none"] = "raise",
     error_message: str = "Operation blocked by security policy: {reason}",
     audit: bool = True,
@@ -1137,6 +1226,11 @@ def guard(
         rate_limit_max_calls=rate_limit_max_calls,
         rate_limit_window_seconds=rate_limit_window_seconds,
         rate_limit_key=rate_limit_key,
+        hitl=hitl,
+        hitl_callback=hitl_callback,
+        hitl_triggers=hitl_triggers,
+        hitl_timeout_seconds=hitl_timeout_seconds,
+        hitl_default_on_timeout=hitl_default_on_timeout,
         on_block=on_block,
         error_message=error_message,
         audit=audit,

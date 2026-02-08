@@ -12,6 +12,7 @@ Last updated: 2026-02-07
 - [x] **RAG Inspector** - Document access control, ABAC, classification, tenant isolation
 - [x] **API Inspector** - SSRF protection, domain control, data exfiltration prevention
 - [x] **Rate Limiter** - Sliding window counter, per-tool/global limits, @guard integration
+- [x] **HITL Guard** - Human-in-the-Loop approval for high-risk actions, async callbacks
 
 ### Infrastructure
 - [x] **Verdict System** - Universal result type for all inspectors
@@ -21,7 +22,7 @@ Last updated: 2026-02-07
 - [x] **Exception Hierarchy** - WardenError, PolicyViolation, CriticalViolation, etc.
 
 ### Testing & Documentation
-- [x] 528 tests passing
+- [x] 594 tests passing
 - [x] 10 example files demonstrating all features
 - [x] README with full documentation
 - [x] CLAUDE.md with code style rules
@@ -32,45 +33,22 @@ Last updated: 2026-02-07
 
 ### High Priority
 
-#### 1. Human-in-the-Loop (HITL) Approval Guard
-**Status:** Not started
-**Description:** Pause agent execution for human approval on high-risk actions.
-**Use cases:**
-- Transactions above threshold
-- DELETE/DROP operations
-- Sending emails/messages
-- Payment API calls
-
-**Proposed API:**
-```python
-@guard(
-    sql=True,
-    hitl=True,
-    hitl_on=["DELETE", "DROP"],
-    hitl_callback=my_approval_function,
-)
-def execute_query(sql: str):
-    return db.execute(sql)
-```
-
-**Challenge:** Requires async callback mechanism that varies by deployment (CLI, web, Slack).
-
-#### 2. LangChain Middleware Adapter
+#### 1. LangChain Middleware Adapter
 **Status:** Not started
 **Description:** Thin adapter for LangChain integration.
 **Location:** `warden/integrations/langchain.py`
 
 ### Medium Priority
 
-#### 3. Tool Retry with Backoff
+#### 2. Tool Retry with Backoff
 **Status:** Not started
 **Description:** Automatic retry with exponential backoff for transient failures.
 
-#### 4. Context/Identity Inspector
+#### 3. Context/Identity Inspector
 **Status:** Not started
 **Description:** Identity-centric access control beyond what RAG Inspector provides.
 
-#### 5. Improve PII Custom Detector API
+#### 4. Improve PII Custom Detector API
 **Status:** Not started
 **Description:** Match LangChain's detector signature for easier migration.
 
@@ -90,7 +68,9 @@ warden/
 │   │   └── api.py            # API call security (SSRF, exfiltration)
 │   ├── verdict.py            # Universal result type
 │   ├── policy.py             # YAML policy engine
-│   └── audit.py              # Compliance logging
+│   ├── audit.py              # Compliance logging
+│   ├── rate_limiter.py       # Sliding window rate limiting
+│   └── hitl.py               # Human-in-the-Loop approval
 │
 ├── integrations/              # Thin adapters (~100 lines max)
 │   └── strands.py            # AWS Strands @guard decorator
@@ -121,6 +101,8 @@ Every inspector follows this pattern:
 | Shell | INPUT | Command before execution |
 | RAG | OUTPUT | Documents before passing to LLM |
 | API | INPUT | Request before HTTP call |
+| Rate Limit | INPUT | Call count before execution |
+| HITL | INPUT | High-risk actions before execution |
 
 ---
 
@@ -150,7 +132,11 @@ python -m pytest tests/ --cov=warden --cov-report=term-missing
 - 9 new integration tests
 - Implemented Rate Limiter with sliding window counter
 - Integrated RateLimiter into @guard decorator (rate_limit=True parameter)
-- 26 new rate limiter tests (563 total)
+- 26 new rate limiter tests
+- Implemented Human-in-the-Loop (HITL) Guard with async callback support
+- HITLGuard with customizable triggers, timeout, risk levels
+- Integrated HITL into @guard decorator (hitl=True, hitl_callback=... parameters)
+- 31 new HITL tests (594 total)
 
 ### Previous
 - RAG Inspector with ABAC, classification, tenant isolation

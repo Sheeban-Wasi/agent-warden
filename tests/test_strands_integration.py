@@ -1077,3 +1077,146 @@ class TestRateLimitGuardIntegration:
         # SQL injection blocked (not rate limit)
         with pytest.raises((PolicyViolation, CriticalViolation)):
             query_db("DROP TABLE users")
+
+
+# =============================================================================
+# HITL GUARD INTEGRATION TESTS
+# =============================================================================
+
+
+class TestHITLGuardIntegration:
+    """Test the @guard decorator HITL integration."""
+
+    def test_hitl_approves_dangerous_action(self):
+        """HITL allows action when approved."""
+        from warden import create_auto_approve_callback
+
+        @guard(
+            sql=True,
+            mode="safe-write",  # Allow writes so HITL can be tested
+            allowed_tables={"users"},
+            hitl=True,
+            hitl_callback=create_auto_approve_callback(),
+            audit=False,
+        )
+        def execute_sql(sql: str) -> str:
+            return f"executed: {sql}"
+
+        # DELETE requires approval but is auto-approved
+        result = execute_sql("DELETE FROM users WHERE id = 1")
+        assert "executed:" in result
+
+    def test_hitl_blocks_when_denied(self):
+        """HITL blocks action when denied."""
+        from warden import ApprovalRequest, create_auto_deny_callback
+
+        @guard(
+            sql=True,
+            hitl=True,
+            hitl_callback=create_auto_deny_callback(),
+            audit=False,
+        )
+        def execute_sql(sql: str) -> str:
+            return f"executed: {sql}"
+
+        # DELETE requires approval and is denied
+        with pytest.raises(PolicyViolation) as exc_info:
+            execute_sql("DELETE FROM users WHERE id = 1")
+
+        assert "human approval" in str(exc_info.value).lower()
+
+    def test_hitl_skips_safe_actions(self):
+        """HITL doesn't trigger for safe actions."""
+        callback_called = False
+
+        def tracking_callback(request) -> bool:
+            nonlocal callback_called
+            callback_called = True
+            return True
+
+        @guard(
+            sql=True,
+            hitl=True,
+            hitl_callback=tracking_callback,
+            audit=False,
+        )
+        def execute_sql(sql: str) -> str:
+            return f"executed: {sql}"
+
+        # SELECT doesn't require approval
+        result = execute_sql("SELECT * FROM users")
+        assert "executed:" in result
+        assert not callback_called  # Callback was NOT called
+
+    def test_hitl_custom_triggers(self):
+        """HITL with custom triggers works."""
+        callback_called = False
+
+        def tracking_callback(request) -> bool:
+            nonlocal callback_called
+            callback_called = True
+            return True
+
+        # Use shell commands to test custom triggers
+        # (SQL has critical node blocking that interferes with HITL testing)
+        # IMPORTANT: Must set sql=False because it defaults to True,
+        # which would make action_type="sql" instead of "shell"
+        @guard(
+            sql=False,  # Disable SQL so action_type becomes "shell"
+            shell=True,
+            shell_mode="monitor",  # Monitor mode doesn't block
+            hitl=True,
+            hitl_callback=tracking_callback,
+            hitl_triggers={"shell": {"deploy"}},  # Only "deploy" triggers HITL
+            audit=False,
+        )
+        def run_command(cmd: str) -> str:
+            return f"executed: {cmd}"
+
+        # "ls" doesn't trigger HITL (not in custom triggers)
+        result = run_command("ls -la")
+        assert "executed:" in result
+        assert not callback_called  # ls didn't trigger HITL
+
+        # "deploy" should trigger HITL
+        result = run_command("deploy production")
+        assert "executed:" in result
+        assert callback_called  # deploy triggered HITL
+
+    def test_hitl_return_error_mode(self):
+        """HITL can return error instead of raising."""
+        from warden import create_auto_deny_callback
+
+        @guard(
+            sql=True,
+            hitl=True,
+            hitl_callback=create_auto_deny_callback(),
+            on_block="return_error",
+            audit=False,
+        )
+        def execute_sql(sql: str) -> str:
+            return f"executed: {sql}"
+
+        result = execute_sql("DELETE FROM users")
+
+        assert isinstance(result, dict)
+        assert result.get("error") is True
+        assert result.get("blocked") is True
+
+    def test_hitl_with_shell_guard(self):
+        """HITL works with shell guard."""
+        from warden import create_auto_deny_callback
+
+        @guard(
+            sql=False,
+            shell=True,
+            hitl=True,
+            hitl_callback=create_auto_deny_callback(),
+            audit=False,
+        )
+        def run_command(cmd: str) -> str:
+            return f"ran: {cmd}"
+
+        # rm requires approval and is denied
+        with pytest.raises(PolicyViolation):
+            run_command("rm -rf /tmp/test")
